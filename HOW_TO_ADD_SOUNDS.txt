@@ -1,0 +1,98 @@
+============================================================
+  HOW TO ADD REAL SOUND EFFECTS & MUSIC TO YOUR GAME
+============================================================
+
+The game is fully wired for audio — it just needs real sound
+files. The SoundManager gracefully skips any missing files,
+so the game works fine without them.
+
+
+STEP 1: Get Sound Files
+------------------------
+You need 8 audio files in .ogg format (recommended) or .mp3:
+
+  swap.ogg      — Short "swoosh" sound when two candies swap
+  match.ogg     — Satisfying "pop" or "ding" when candies match
+  cascade.ogg   — Quick "tumble" sound as candies fall down
+  special.ogg   — Powerful "boom" or "sparkle" for special candy activation
+  win.ogg       — Victory fanfare when you complete a level
+  lose.ogg      — Sad/disappointed sound for game over
+  shuffle.ogg   — "Whoosh" or shuffle sound when the board reshuffles
+  bgm.ogg       — Background music loop (can be longer, 30-120 seconds)
+
+Where to find free game sounds:
+  - https://freesound.org (free with attribution)
+  - https://opengameart.org (free game assets)
+  - https://pixabay.com/sound-effects (royalty-free)
+  - https://sfxr.me (generate retro sound effects in your browser!)
+  - Search "free game sound effects" on YouTube for tutorials
+
+
+STEP 2: Place Files in the Project
+------------------------------------
+Copy your .ogg files into this folder:
+
+  app/src/main/res/raw/
+
+So the full paths will be:
+  app/src/main/res/raw/swap.ogg
+  app/src/main/res/raw/match.ogg
+  app/src/main/res/raw/cascade.ogg
+  app/src/main/res/raw/special.ogg
+  app/src/main/res/raw/win.ogg
+  app/src/main/res/raw/lose.ogg
+  app/src/main/res/raw/shuffle.ogg
+  app/src/main/res/raw/bgm.ogg
+
+IMPORTANT: File names must be lowercase, no spaces, no
+special characters. Only letters, numbers, and underscores.
+
+
+STEP 3: Rebuild the App
+-------------------------
+After adding the files:
+  1. In Android Studio: Build > Rebuild Project
+  2. Run the app on your device/emulator
+  3. The sounds should play automatically!
+
+No code changes needed — the SoundManager detects the files
+at runtime using their names.
+
+
+STEP 4 (Optional): Adjust Volume & Behavior
+---------------------------------------------
+If you want to tweak audio settings, edit:
+  app/src/main/java/com/candycrush/game/audio/SoundManager.kt
+
+Key things you can change:
+  - Background music volume: line with setVolume(0.4f, 0.4f)
+    Change 0.4f to 0.0f (silent) through 1.0f (full volume)
+
+  - Combo pitch escalation: line with (1.0f + comboLevel * 0.1f)
+    Change 0.1f to make pitch rise faster/slower per combo
+
+  - Mute sounds programmatically:
+    ServiceLocator.soundManager.isSfxMuted = true    // Mute effects
+    ServiceLocator.soundManager.isMusicMuted = true   // Mute music
+
+
+WHEN EACH SOUND PLAYS
+-----------------------
+  swap.ogg      → Player swipes to swap two candies
+  match.ogg     → Matched candies flash/highlight before clearing
+  cascade.ogg   → After clearing, candies fall and new ones enter
+                   (pitch rises with each chain combo!)
+  special.ogg   → A special candy (striped/wrapped/bomb) activates
+  win.ogg       → Player reaches the target score (level complete)
+  lose.ogg      → Player runs out of moves (game over)
+  shuffle.ogg   → No valid moves available, board reshuffles
+  bgm.ogg       → Loops continuously from splash screen onward,
+                   pauses when app goes to background
+
+
+TIPS
+-----
+  - Keep sound effect files SHORT (under 2 seconds)
+  - Background music should loop cleanly (fade out = fade in)
+  - .ogg format is preferred over .mp3 for Android (smaller, better quality)
+  - Test on a real device — emulator audio can be laggy
