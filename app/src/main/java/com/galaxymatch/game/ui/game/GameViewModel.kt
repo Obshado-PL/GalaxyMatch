@@ -271,18 +271,31 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
      */
     private suspend fun animateProgress(
         durationMs: Long,
-        steps: Int = 20,       // Higher default for smoother animations
+        steps: Int = 20,       // Ignored — kept for API compatibility, now frame-synced
         updateState: (GameUiState, Float) -> GameUiState
     ) {
-        val stepDuration = durationMs / steps
-        for (i in 1..steps) {
+        // Use time-based animation synced to ~60fps for smooth motion.
+        // Previous approach used delay(stepDuration) with discrete steps
+        // which caused choppy animation (~30fps). Now we update every frame
+        // (~16ms) and calculate progress from elapsed wall-clock time.
+        val durationNanos = durationMs * 1_000_000L
+        val startTime = System.nanoTime()
+
+        while (true) {
+            val elapsed = System.nanoTime() - startTime
+            val linear = (elapsed.toFloat() / durationNanos).coerceAtMost(1f)
+
             // Ease-out: starts fast, decelerates at the end
             // Formula: 1 - (1 - t)^3  (cubic ease-out — smoother than quadratic)
-            val linear = i.toFloat() / steps
             val inv = 1f - linear
             val eased = 1f - inv * inv * inv
+
             _uiState.update { updateState(it, eased) }
-            delay(stepDuration)
+
+            if (linear >= 1f) break
+
+            // Yield to other coroutines and wait ~1 frame (~16ms)
+            delay(16)
         }
     }
 
