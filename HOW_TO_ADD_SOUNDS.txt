@@ -11,10 +11,10 @@ STEP 1: Get Sound Files
 ------------------------
 You need 8 audio files in .ogg format (recommended) or .mp3:
 
-  swap.ogg      — Short "swoosh" sound when two candies swap
-  match.ogg     — Satisfying "pop" or "ding" when candies match
-  cascade.ogg   — Quick "tumble" sound as candies fall down
-  special.ogg   — Powerful "boom" or "sparkle" for special candy activation
+  swap.ogg      — Short "swoosh" sound when two gems swap
+  match.ogg     — Satisfying "pop" or "ding" when gems match
+  cascade.ogg   — Quick "tumble" sound as gems fall down
+  special.ogg   — Powerful "boom" or "sparkle" for special gem activation
   win.ogg       — Victory fanfare when you complete a level
   lose.ogg      — Sad/disappointed sound for game over
   shuffle.ogg   — "Whoosh" or shuffle sound when the board reshuffles
@@ -62,7 +62,7 @@ at runtime using their names.
 STEP 4 (Optional): Adjust Volume & Behavior
 ---------------------------------------------
 If you want to tweak audio settings, edit:
-  app/src/main/java/com/candycrush/game/audio/SoundManager.kt
+  app/src/main/java/com/galaxymatch/game/audio/SoundManager.kt
 
 Key things you can change:
   - Background music volume: line with setVolume(0.4f, 0.4f)
@@ -78,11 +78,11 @@ Key things you can change:
 
 WHEN EACH SOUND PLAYS
 -----------------------
-  swap.ogg      → Player swipes to swap two candies
-  match.ogg     → Matched candies flash/highlight before clearing
-  cascade.ogg   → After clearing, candies fall and new ones enter
+  swap.ogg      → Player swipes to swap two gems
+  match.ogg     → Matched gems flash/highlight before clearing
+  cascade.ogg   → After clearing, gems fall and new ones enter
                    (pitch rises with each chain combo!)
-  special.ogg   → A special candy (striped/wrapped/bomb) activates
+  special.ogg   → A special gem (striped/wrapped/bomb) activates
   win.ogg       → Player reaches the target score (level complete)
   lose.ogg      → Player runs out of moves (game over)
   shuffle.ogg   → No valid moves available, board reshuffles

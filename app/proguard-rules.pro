@@ -14,4 +14,4 @@
 }
 
 # Keep navigation route classes
--keep class com.candycrush.game.navigation.** { *; }
+-keep class com.galaxymatch.game.navigation.** { *; }

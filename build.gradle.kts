@@ -1,4 +1,4 @@
-// Top-level build file for Candy Crush Game
+// Top-level build file for Galaxy Match Game
 // This file configures build settings shared across all modules.
 plugins {
     alias(libs.plugins.android.application) apply false

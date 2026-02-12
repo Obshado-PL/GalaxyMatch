@@ -6,11 +6,11 @@ plugins {
 }
 
 android {
-    namespace = "com.candycrush.game"
+    namespace = "com.galaxymatch.game"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.candycrush.game"
+        applicationId = "com.galaxymatch.game"
         minSdk = 26
         targetSdk = 36
         versionCode = 1
