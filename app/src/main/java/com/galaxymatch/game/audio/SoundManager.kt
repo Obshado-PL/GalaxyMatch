@@ -169,6 +169,31 @@ class SoundManager(private val context: Context) {
         playSound(iceBreakSoundId, pitch = pitch)
     }
 
+    /**
+     * Play a deeper ice hit sound when reinforced ice is cracked (first hit).
+     * Deeper pitch than normal ice break to indicate "tougher" obstacle.
+     * Uses the same ice_break sound file at a lower pitch.
+     */
+    fun playReinforcedIceHit() {
+        playSound(iceBreakSoundId, pitch = 0.7f)
+    }
+
+    /**
+     * Play a ticking sound when a bomb timer reaches 2 or below.
+     * Reuses the match sound at a fast, high pitch for urgency.
+     */
+    fun playBombTick() {
+        playSound(matchSoundId, volume = 0.6f, pitch = 1.8f)
+    }
+
+    /**
+     * Play an explosion sound when a bomb detonates (timer reaches 0).
+     * Reuses the lose sound at a slightly higher pitch for dramatic effect.
+     */
+    fun playBombExplode() {
+        playSound(loseSoundId, pitch = 1.2f)
+    }
+
     // ===== Background Music Methods =====
 
     /**

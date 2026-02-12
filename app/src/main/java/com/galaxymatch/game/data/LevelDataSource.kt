@@ -198,7 +198,8 @@ object LevelDataSource {
             description = "Clear 30 blue gems!",
             objective = ObjectiveType.ClearGemType(GemType.Blue, targetCount = 30)
         ),
-        // Level 14: Stone L-shape barrier in the corner, creating isolated pockets.
+        // Level 14: Stone L-shape barrier + Locked Gems introduction!
+        // Two locked gems block key positions — free them by matching adjacent gems.
         LevelConfig(
             levelNumber = 14,
             rows = 8, cols = 8,
@@ -207,13 +208,17 @@ object LevelDataSource {
             twoStarScore = 9500,
             threeStarScore = 13000,
             availableGemTypes = 6,
+            description = "Locked gems can't be swapped!",
             obstacles = mapOf(
                 // L-shape in top-left corner
                 Position(2, 2) to ObstacleType.Stone,
                 Position(3, 2) to ObstacleType.Stone,
                 Position(4, 2) to ObstacleType.Stone,
                 Position(4, 3) to ObstacleType.Stone,
-                Position(4, 4) to ObstacleType.Stone
+                Position(4, 4) to ObstacleType.Stone,
+                // Locked gems in strategic spots
+                Position(1, 5) to ObstacleType.Locked,
+                Position(6, 3) to ObstacleType.Locked
             )
         ),
         // Level 15: Mixed obstacles! Stones create chambers, ice fills the gaps.
@@ -245,6 +250,7 @@ object LevelDataSource {
         ),
 
         // ===== HARD LEVELS (16-20): All 6 colors, fewer moves =====
+        // Level 16: Locked gem fortress — 4 locked gems guard key intersections.
         LevelConfig(
             levelNumber = 16,
             rows = 9, cols = 9,
@@ -252,8 +258,17 @@ object LevelDataSource {
             targetScore = 7500,
             twoStarScore = 11000,
             threeStarScore = 15000,
-            availableGemTypes = 6
+            availableGemTypes = 6,
+            description = "Free the locked gems!",
+            obstacles = mapOf(
+                Position(2, 3) to ObstacleType.Locked,
+                Position(2, 5) to ObstacleType.Locked,
+                Position(6, 3) to ObstacleType.Locked,
+                Position(6, 5) to ObstacleType.Locked
+            )
         ),
+        // Level 17: Timed Bombs introduction! 2 bombs with 8-move timers.
+        // Match them before they explode or it's game over!
         LevelConfig(
             levelNumber = 17,
             rows = 9, cols = 9,
@@ -261,19 +276,24 @@ object LevelDataSource {
             targetScore = 8000,
             twoStarScore = 12000,
             threeStarScore = 16000,
-            availableGemTypes = 6
+            availableGemTypes = 6,
+            description = "Defuse the bombs before they explode!",
+            bombs = mapOf(
+                Position(3, 2) to 8,
+                Position(5, 6) to 8
+            )
         ),
-        // Level 18: Two stone pillars with ice filling between them.
-        // BreakAllIce objective — smash the ice trapped between the pillars!
+        // Level 18: Two stone pillars with reinforced ice between them!
+        // BreakAllIce objective — reinforced ice takes TWO hits to break!
         LevelConfig(
             levelNumber = 18,
             rows = 9, cols = 9,
-            maxMoves = 14,
+            maxMoves = 16,
             targetScore = 8500,
             twoStarScore = 12500,
             threeStarScore = 17000,
             availableGemTypes = 6,
-            description = "Break the ice between the pillars!",
+            description = "Reinforced ice takes 2 hits!",
             objective = ObjectiveType.BreakAllIce,
             obstacles = mapOf(
                 // Left stone pillar
@@ -284,25 +304,26 @@ object LevelDataSource {
                 Position(2, 6) to ObstacleType.Stone,
                 Position(3, 6) to ObstacleType.Stone,
                 Position(4, 6) to ObstacleType.Stone,
-                // Ice between the pillars
-                Position(3, 3) to ObstacleType.Ice,
-                Position(3, 4) to ObstacleType.Ice,
-                Position(3, 5) to ObstacleType.Ice,
+                // Reinforced ice between the pillars (takes 2 hits!)
+                Position(3, 3) to ObstacleType.ReinforcedIce,
+                Position(3, 4) to ObstacleType.ReinforcedIce,
+                Position(3, 5) to ObstacleType.ReinforcedIce,
+                // Normal ice on the flanks
                 Position(5, 3) to ObstacleType.Ice,
                 Position(5, 5) to ObstacleType.Ice
             )
         ),
-        // Level 19: Complex stone frame with ice inside — a frozen cage.
-        // BreakAllIce objective — free the ice from the cage!
+        // Level 19: Frozen cage with mixed obstacles — reinforced ice + locked gems.
+        // BreakAllIce objective — break through reinforced ice AND free locked gems!
         LevelConfig(
             levelNumber = 19,
             rows = 9, cols = 9,
-            maxMoves = 13,
+            maxMoves = 15,
             targetScore = 9000,
             twoStarScore = 13000,
             threeStarScore = 18000,
             availableGemTypes = 6,
-            description = "Break the ice inside the cage!",
+            description = "Break through the reinforced cage!",
             objective = ObjectiveType.BreakAllIce,
             obstacles = mapOf(
                 // Stone frame (partial border)
@@ -314,27 +335,31 @@ object LevelDataSource {
                 Position(5, 6) to ObstacleType.Stone,
                 Position(6, 2) to ObstacleType.Stone,
                 Position(6, 6) to ObstacleType.Stone,
-                // Ice filling the interior
+                // Reinforced ice in the center (takes 2 hits)
+                Position(4, 3) to ObstacleType.ReinforcedIce,
+                Position(4, 4) to ObstacleType.ReinforcedIce,
+                Position(4, 5) to ObstacleType.ReinforcedIce,
+                // Normal ice on top and bottom
                 Position(3, 3) to ObstacleType.Ice,
                 Position(3, 5) to ObstacleType.Ice,
-                Position(4, 3) to ObstacleType.Ice,
-                Position(4, 4) to ObstacleType.Ice,
-                Position(4, 5) to ObstacleType.Ice,
                 Position(5, 3) to ObstacleType.Ice,
-                Position(5, 5) to ObstacleType.Ice
+                Position(5, 5) to ObstacleType.Ice,
+                // Locked gems guarding the flanks
+                Position(1, 4) to ObstacleType.Locked,
+                Position(7, 4) to ObstacleType.Locked
             )
         ),
-        // Level 20: The ultimate challenge! Dense mixed obstacles everywhere.
-        // ClearGemType objective — clear 40 green gems through the obstacle maze!
+        // Level 20: The ultimate challenge! All obstacle types + bombs.
+        // ClearGemType objective — clear 40 green gems while dodging bombs!
         LevelConfig(
             levelNumber = 20,
             rows = 9, cols = 9,
-            maxMoves = 12,
+            maxMoves = 14,
             targetScore = 10000,
             twoStarScore = 15000,
             threeStarScore = 20000,
             availableGemTypes = 6,
-            description = "Clear 40 green gems!",
+            description = "Clear 40 green gems — watch the bombs!",
             objective = ObjectiveType.ClearGemType(GemType.Green, targetCount = 40),
             obstacles = mapOf(
                 // Cross-shaped stone wall through the center
@@ -343,15 +368,21 @@ object LevelDataSource {
                 Position(4, 5) to ObstacleType.Stone,
                 Position(3, 4) to ObstacleType.Stone,
                 Position(5, 4) to ObstacleType.Stone,
-                // Ice scattered in all four quadrants
-                Position(1, 1) to ObstacleType.Ice,
-                Position(1, 7) to ObstacleType.Ice,
+                // Reinforced ice in corners (takes 2 hits)
+                Position(1, 1) to ObstacleType.ReinforcedIce,
+                Position(1, 7) to ObstacleType.ReinforcedIce,
+                Position(7, 1) to ObstacleType.ReinforcedIce,
+                Position(7, 7) to ObstacleType.ReinforcedIce,
+                // Normal ice in mid positions
                 Position(2, 2) to ObstacleType.Ice,
                 Position(2, 6) to ObstacleType.Ice,
                 Position(6, 2) to ObstacleType.Ice,
-                Position(6, 6) to ObstacleType.Ice,
-                Position(7, 1) to ObstacleType.Ice,
-                Position(7, 7) to ObstacleType.Ice
+                Position(6, 6) to ObstacleType.Ice
+            ),
+            // Timed bombs — defuse them or game over!
+            bombs = mapOf(
+                Position(1, 4) to 6,
+                Position(7, 4) to 6
             )
         )
     )

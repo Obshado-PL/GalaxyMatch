@@ -146,9 +146,9 @@ fun BoardCanvas(
                             )
                     }
 
-                    // Ice shatter particles: if this position has ice, add icy shards
+                    // Ice shatter particles: if this position has ice or reinforced ice, add icy shards
                     val obstacle = boardState.getObstacle(pos)
-                    if (obstacle == ObstacleType.Ice) {
+                    if (obstacle == ObstacleType.Ice || obstacle == ObstacleType.ReinforcedIce) {
                         particleSystem.spawnIceShatter(cx, cy)
                     }
                 }
@@ -483,15 +483,43 @@ fun BoardCanvas(
                         colorblindMode = colorblindMode
                     )
 
-                    // === Ice overlay ===
-                    // If this gem has ice on it, draw the frozen overlay ON TOP.
-                    // The ice alpha follows the gem alpha so they fade out together
-                    // when the gem is matched (ice breaks when its gem is cleared).
+                    // === Obstacle overlays ===
+                    // Draw obstacle overlays ON TOP of the gem. The alpha follows
+                    // the gem alpha so they fade out together when matched/cleared.
                     val obstacle = boardState.getObstacle(pos)
-                    if (obstacle == ObstacleType.Ice) {
-                        drawIce(
+                    when (obstacle) {
+                        ObstacleType.Ice -> {
+                            drawIce(
+                                center = Offset(centerX, centerY),
+                                radius = drawRadius,
+                                alpha = alpha
+                            )
+                        }
+                        ObstacleType.ReinforcedIce -> {
+                            drawReinforcedIce(
+                                center = Offset(centerX, centerY),
+                                radius = drawRadius,
+                                alpha = alpha
+                            )
+                        }
+                        ObstacleType.Locked -> {
+                            drawLocked(
+                                center = Offset(centerX, centerY),
+                                radius = drawRadius,
+                                alpha = alpha
+                            )
+                        }
+                        else -> { /* Stone handled separately, null = no obstacle */ }
+                    }
+
+                    // === Bomb overlay ===
+                    // Drawn after gem + obstacle so the countdown number is on top.
+                    if (boardState.hasBomb(pos)) {
+                        val timer = boardState.getBombTimer(pos) ?: 0
+                        drawBomb(
                             center = Offset(centerX, centerY),
                             radius = drawRadius,
+                            timer = timer,
                             alpha = alpha
                         )
                     }

@@ -26,13 +26,31 @@ class LevelMapViewModel : ViewModel() {
     }
 
     private fun loadData() {
-        val levels = ServiceLocator.levelRepository.getAllLevels()
+        val repo = ServiceLocator.levelRepository
 
         // Observe player progress (updates automatically when progress changes)
         viewModelScope.launch {
             ServiceLocator.progressRepository.getProgress().collect { progress ->
+                // Build the full level list:
+                // 1. All 20 handcrafted levels (always shown)
+                // 2. Generated levels up to the highest unlocked level (dynamic)
+                val handcraftedLevels = repo.getAllLevels()
+                val handcraftedCount = repo.getHandcraftedLevelCount()
+                val highestUnlocked = progress.highestUnlockedLevel
+
+                val allLevels = if (highestUnlocked > handcraftedCount) {
+                    // Player has progressed beyond handcrafted levels —
+                    // generate configs for the procedural levels they've unlocked
+                    handcraftedLevels + repo.getLevelsInRange(
+                        handcraftedCount + 1,
+                        highestUnlocked
+                    )
+                } else {
+                    handcraftedLevels
+                }
+
                 _uiState.value = LevelMapUiState(
-                    levels = levels,
+                    levels = allLevels,
                     progress = progress,
                     isLoaded = true
                 )

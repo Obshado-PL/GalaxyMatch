@@ -81,6 +81,21 @@ class HapticManager(context: Context) {
         vibrate(50L, 120)
     }
 
+    /** Heavier pulse when reinforced ice is cracked (first hit — tougher obstacle). */
+    fun vibrateReinforcedIceHit() {
+        vibrate(80L, 180)
+    }
+
+    /** Quick urgent tick when a bomb timer is running low (≤2 moves). */
+    fun vibrateBombTick() {
+        vibrate(30L, 100)
+    }
+
+    /** Strong explosive burst when a bomb detonates (game over trigger). */
+    fun vibrateBombExplode() {
+        vibrate(150L, 255)
+    }
+
     /** Short rumble pattern when the board shuffles. */
     fun vibrateShuffle() {
         if (isHapticMuted || !vibrator.hasVibrator()) return

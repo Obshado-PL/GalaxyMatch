@@ -128,6 +128,9 @@ class SettingsViewModel : ViewModel() {
             progressRepo.clearAllProgress()
             settingsRepo.clearAll()
             ServiceLocator.statisticsRepository.clearAll()
+            ServiceLocator.dailyChallengeRepository.clearAll()
+            ServiceLocator.achievementRepository.clearAll()
+            ServiceLocator.timedChallengeRepository.clearAll()
             // Restore default settings
             soundManager.isSfxMuted = false
             soundManager.isMusicMuted = false

@@ -21,6 +21,12 @@ enum class ObstacleType {
     /** Gem underneath, breaks when the gem is matched (1 hit). */
     Ice,
 
+    /** 2-hit ice — downgrades to Ice on first hit, then breaks normally. */
+    ReinforcedIce,
+
+    /** Gem underneath, cannot be swapped. Freed when an adjacent gem is matched. */
+    Locked,
+
     /** Permanent wall — no gem, no swap, gravity flows around it. */
     Stone
 }

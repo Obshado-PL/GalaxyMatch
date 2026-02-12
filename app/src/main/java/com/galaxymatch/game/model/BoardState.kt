@@ -21,7 +21,8 @@ data class BoardState(
     val rows: Int,
     val cols: Int,
     val grid: Array<Array<Gem?>>,
-    val obstacles: Map<Position, ObstacleType> = emptyMap()
+    val obstacles: Map<Position, ObstacleType> = emptyMap(),
+    val bombs: Map<Position, Int> = emptyMap()
 ) {
     /**
      * Get the gem at a specific position.
@@ -79,6 +80,22 @@ data class BoardState(
     fun isStone(pos: Position): Boolean = obstacles[pos] == ObstacleType.Stone
 
     /**
+     * Check if a position has a locked gem.
+     * Locked gems can't be swapped but can still participate in matches formed by gravity.
+     */
+    fun isLocked(pos: Position): Boolean = obstacles[pos] == ObstacleType.Locked
+
+    /**
+     * Check if a position has a bomb.
+     */
+    fun hasBomb(pos: Position): Boolean = pos in bombs
+
+    /**
+     * Get the bomb timer at a position, or null if no bomb.
+     */
+    fun getBombTimer(pos: Position): Int? = bombs[pos]
+
+    /**
      * Create a deep copy of this board state.
      * This is important because we sometimes need to test a swap without
      * modifying the real board (e.g., checking if a move is valid).
@@ -90,8 +107,8 @@ data class BoardState(
                 grid[row][col]?.copy()
             }
         }
-        // Obstacles map is immutable — safe to share without copying
-        return BoardState(rows, cols, newGrid, obstacles)
+        // Obstacles and bombs maps are immutable — safe to share without copying
+        return BoardState(rows, cols, newGrid, obstacles, bombs)
     }
 
     /**
@@ -113,6 +130,7 @@ data class BoardState(
         if (other !is BoardState) return false
         if (rows != other.rows || cols != other.cols) return false
         if (obstacles != other.obstacles) return false
+        if (bombs != other.bombs) return false
         for (r in 0 until rows) {
             for (c in 0 until cols) {
                 if (grid[r][c] != other.grid[r][c]) return false
@@ -125,6 +143,7 @@ data class BoardState(
         var result = rows
         result = 31 * result + cols
         result = 31 * result + obstacles.hashCode()
+        result = 31 * result + bombs.hashCode()
         for (r in 0 until rows) {
             for (c in 0 until cols) {
                 result = 31 * result + (grid[r][c]?.hashCode() ?: 0)

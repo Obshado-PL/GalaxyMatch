@@ -35,6 +35,18 @@ object SettingsRoute
 @Serializable
 object StatisticsRoute
 
+/** The daily challenge screen showing streak, stats, and play button */
+@Serializable
+object DailyChallengeRoute
+
+/** The achievements screen showing all 30 achievements and progress */
+@Serializable
+object AchievementsRoute
+
+/** The timed challenge selection screen with 3 difficulty tiers */
+@Serializable
+object TimedChallengeRoute
+
 /** The results screen shown after completing or failing a level */
 @Serializable
 data class ResultsRoute(

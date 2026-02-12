@@ -18,6 +18,9 @@ import com.galaxymatch.game.ui.results.ResultsScreen
 import com.galaxymatch.game.ui.settings.SettingsScreen
 import com.galaxymatch.game.ui.splash.SplashScreen
 import com.galaxymatch.game.ui.statistics.StatisticsScreen
+import com.galaxymatch.game.ui.dailychallenge.DailyChallengeScreen
+import com.galaxymatch.game.ui.achievements.AchievementsScreen
+import com.galaxymatch.game.ui.timedchallenge.TimedChallengeScreen
 
 /** Duration for all screen transitions (300ms with smooth deceleration) */
 private const val NAV_ANIM_DURATION = 300
@@ -113,6 +116,50 @@ fun AppNavigation() {
                 },
                 onStatsClicked = {
                     navController.navigate(StatisticsRoute)
+                },
+                onDailyChallengeClicked = {
+                    navController.navigate(DailyChallengeRoute)
+                },
+                onAchievementsClicked = {
+                    navController.navigate(AchievementsRoute)
+                },
+                onTimedChallengeClicked = {
+                    navController.navigate(TimedChallengeRoute)
+                }
+            )
+        }
+
+        // ===== Daily Challenge Screen =====
+        composable<DailyChallengeRoute> {
+            DailyChallengeScreen(
+                onPlayChallenge = {
+                    // levelNumber = -1 is the sentinel for daily challenge
+                    navController.navigate(GameRoute(-1))
+                },
+                onBack = {
+                    navController.popBackStack(LevelMapRoute, inclusive = false)
+                }
+            )
+        }
+
+        // ===== Achievements Screen =====
+        composable<AchievementsRoute> {
+            AchievementsScreen(
+                onBack = {
+                    navController.popBackStack(LevelMapRoute, inclusive = false)
+                }
+            )
+        }
+
+        // ===== Timed Challenge Screen =====
+        composable<TimedChallengeRoute> {
+            TimedChallengeScreen(
+                onStartTimed = { difficultyOrdinal ->
+                    // levelNumber = -(100 + difficultyOrdinal) is the sentinel for timed mode
+                    navController.navigate(GameRoute(-(100 + difficultyOrdinal)))
+                },
+                onBack = {
+                    navController.popBackStack(LevelMapRoute, inclusive = false)
                 }
             )
         }

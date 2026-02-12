@@ -10,6 +10,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.nativeCanvas
 import com.galaxymatch.game.model.Gem
 import com.galaxymatch.game.model.GemType
 import com.galaxymatch.game.model.SpecialType
@@ -441,6 +442,222 @@ fun DrawScope.drawIce(
         color = Color.White.copy(alpha = 0.15f * alpha),
         radius = radius * 0.5f,
         center = Offset(center.x - radius * 0.2f, center.y - radius * 0.25f)
+    )
+}
+
+/**
+ * Draw a reinforced ice overlay (2-hit ice).
+ *
+ * Thicker, deeper blue than normal ice with more sparkles.
+ * Downgrades to normal Ice after the first hit.
+ */
+fun DrawScope.drawReinforcedIce(
+    center: Offset,
+    radius: Float,
+    alpha: Float = 1f
+) {
+    // Thicker cyan border ring
+    drawCircle(
+        color = Color(0xFF0099CC).copy(alpha = 0.7f * alpha),
+        radius = radius * 1.1f,
+        center = center,
+        style = androidx.compose.ui.graphics.drawscope.Stroke(width = radius * 0.14f)
+    )
+
+    // Second inner ring for layered look
+    drawCircle(
+        color = Color(0xFF00BBEE).copy(alpha = 0.4f * alpha),
+        radius = radius * 1.0f,
+        center = center,
+        style = androidx.compose.ui.graphics.drawscope.Stroke(width = radius * 0.06f)
+    )
+
+    // Deeper blue tint fill
+    drawCircle(
+        color = Color(0xFF88BBFF).copy(alpha = 0.4f * alpha),
+        radius = radius,
+        center = center
+    )
+
+    // 6 frost sparkles (doubled from normal ice's 3)
+    val sparklePositions = listOf(
+        Offset(center.x - radius * 0.35f, center.y - radius * 0.3f),
+        Offset(center.x + radius * 0.25f, center.y - radius * 0.15f),
+        Offset(center.x - radius * 0.1f, center.y + radius * 0.35f),
+        Offset(center.x + radius * 0.35f, center.y + radius * 0.25f),
+        Offset(center.x - radius * 0.3f, center.y + radius * 0.1f),
+        Offset(center.x + radius * 0.1f, center.y - radius * 0.4f)
+    )
+    val sparkleRadii = listOf(
+        radius * 0.08f, radius * 0.06f, radius * 0.07f,
+        radius * 0.06f, radius * 0.05f, radius * 0.07f
+    )
+
+    for (i in sparklePositions.indices) {
+        drawCircle(
+            color = Color.White.copy(alpha = 0.9f * alpha),
+            radius = sparkleRadii[i],
+            center = sparklePositions[i]
+        )
+    }
+
+    // Inner highlight
+    drawCircle(
+        color = Color.White.copy(alpha = 0.2f * alpha),
+        radius = radius * 0.5f,
+        center = Offset(center.x - radius * 0.2f, center.y - radius * 0.25f)
+    )
+}
+
+/**
+ * Draw a lock cage overlay on a gem.
+ *
+ * Shows dark metallic cage bars in an X-pattern with a small padlock circle.
+ * Indicates the gem cannot be swapped until freed by an adjacent match.
+ */
+fun DrawScope.drawLocked(
+    center: Offset,
+    radius: Float,
+    alpha: Float = 1f
+) {
+    val cageColor = Color(0xFF666666).copy(alpha = 0.75f * alpha)
+    val barWidth = radius * 0.1f
+
+    // X-pattern cage bars
+    drawLine(
+        color = cageColor,
+        start = Offset(center.x - radius * 0.7f, center.y - radius * 0.7f),
+        end = Offset(center.x + radius * 0.7f, center.y + radius * 0.7f),
+        strokeWidth = barWidth,
+        cap = StrokeCap.Round
+    )
+    drawLine(
+        color = cageColor,
+        start = Offset(center.x + radius * 0.7f, center.y - radius * 0.7f),
+        end = Offset(center.x - radius * 0.7f, center.y + radius * 0.7f),
+        strokeWidth = barWidth,
+        cap = StrokeCap.Round
+    )
+
+    // Horizontal and vertical bars
+    drawLine(
+        color = cageColor,
+        start = Offset(center.x - radius * 0.7f, center.y),
+        end = Offset(center.x + radius * 0.7f, center.y),
+        strokeWidth = barWidth * 0.8f,
+        cap = StrokeCap.Round
+    )
+    drawLine(
+        color = cageColor,
+        start = Offset(center.x, center.y - radius * 0.7f),
+        end = Offset(center.x, center.y + radius * 0.7f),
+        strokeWidth = barWidth * 0.8f,
+        cap = StrokeCap.Round
+    )
+
+    // Small padlock circle at center
+    drawCircle(
+        color = Color(0xFF555555).copy(alpha = 0.85f * alpha),
+        radius = radius * 0.2f,
+        center = center
+    )
+    drawCircle(
+        color = Color(0xFF888888).copy(alpha = 0.9f * alpha),
+        radius = radius * 0.2f,
+        center = center,
+        style = androidx.compose.ui.graphics.drawscope.Stroke(width = radius * 0.06f)
+    )
+    // Padlock shackle (small arc above the circle)
+    drawCircle(
+        color = Color(0xFF888888).copy(alpha = 0.9f * alpha),
+        radius = radius * 0.12f,
+        center = Offset(center.x, center.y - radius * 0.18f),
+        style = androidx.compose.ui.graphics.drawscope.Stroke(width = radius * 0.05f)
+    )
+}
+
+/**
+ * Draw a bomb timer overlay on a gem.
+ *
+ * Shows a countdown number with urgency coloring:
+ * 3+ moves = orange, 2 = red, 1 = bright red pulsing.
+ * A small fuse indicator sits above the number.
+ */
+fun DrawScope.drawBomb(
+    center: Offset,
+    radius: Float,
+    timer: Int,
+    alpha: Float = 1f
+) {
+    // Background circle for the countdown
+    val urgencyColor = when {
+        timer <= 1 -> Color(0xFFFF0000)  // Bright red — about to explode!
+        timer <= 2 -> Color(0xFFDD2200)  // Red
+        else -> Color(0xFFFF8800)        // Orange
+    }
+
+    // Dark circle behind the number
+    drawCircle(
+        color = Color.Black.copy(alpha = 0.6f * alpha),
+        radius = radius * 0.38f,
+        center = Offset(center.x, center.y + radius * 0.15f)
+    )
+
+    // Colored ring
+    drawCircle(
+        color = urgencyColor.copy(alpha = 0.9f * alpha),
+        radius = radius * 0.38f,
+        center = Offset(center.x, center.y + radius * 0.15f),
+        style = androidx.compose.ui.graphics.drawscope.Stroke(width = radius * 0.08f)
+    )
+
+    // Fuse spark (small dot above)
+    drawCircle(
+        color = Color(0xFFFFCC00).copy(alpha = 0.9f * alpha),
+        radius = radius * 0.08f,
+        center = Offset(center.x, center.y - radius * 0.55f)
+    )
+    drawCircle(
+        color = Color.White.copy(alpha = 0.7f * alpha),
+        radius = radius * 0.04f,
+        center = Offset(center.x, center.y - radius * 0.55f)
+    )
+
+    // Fuse line
+    drawLine(
+        color = Color(0xFF885500).copy(alpha = 0.8f * alpha),
+        start = Offset(center.x, center.y - radius * 0.2f),
+        end = Offset(center.x, center.y - radius * 0.5f),
+        strokeWidth = radius * 0.06f,
+        cap = StrokeCap.Round
+    )
+
+    // Draw the countdown number using drawCircle-based digit representation
+    // We draw a simple number by rendering small circles/lines
+    val numColor = urgencyColor.copy(alpha = alpha)
+    val textSize = radius * 0.35f
+
+    // Draw number as centered text-like shape
+    // Since we can't easily draw text in DrawScope without nativeCanvas,
+    // draw the number as a bright colored dot pattern or use the number directly
+    // via nativeCanvas for crisp rendering
+    val paint = android.graphics.Paint().apply {
+        color = android.graphics.Color.argb(
+            (alpha * 255).toInt(),
+            (numColor.red * 255).toInt(),
+            (numColor.green * 255).toInt(),
+            (numColor.blue * 255).toInt()
+        )
+        this.textSize = textSize * 2.5f
+        textAlign = android.graphics.Paint.Align.CENTER
+        isFakeBoldText = true
+        isAntiAlias = true
+    }
+    drawContext.canvas.nativeCanvas.drawText(
+        timer.toString(),
+        center.x,
+        center.y + radius * 0.3f,
+        paint
     )
 }
 

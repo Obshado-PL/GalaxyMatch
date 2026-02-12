@@ -41,7 +41,9 @@ class ObjectiveTracker(
      * Total number of ice blocks on this level at the start.
      * Calculated from LevelConfig.obstacles by counting Ice entries.
      */
-    val totalIce: Int = levelConfig.obstacles.count { it.value == ObstacleType.Ice }
+    val totalIce: Int = levelConfig.obstacles.count {
+        it.value == ObstacleType.Ice || it.value == ObstacleType.ReinforcedIce
+    }
 
     /**
      * The target count for ClearGemType objectives.
@@ -129,9 +131,11 @@ class ObjectiveTracker(
                 currentScore >= levelConfig.targetScore
             }
             is ObjectiveType.BreakAllIce -> {
-                // Check if any ice remains on the board
+                // Check if any ice (including reinforced) remains on the board
                 // Using live board state is more reliable than counting
-                currentObstacles.none { it.value == ObstacleType.Ice }
+                currentObstacles.none {
+                    it.value == ObstacleType.Ice || it.value == ObstacleType.ReinforcedIce
+                }
             }
             is ObjectiveType.ClearGemType -> {
                 // Check if enough of the target color have been cleared

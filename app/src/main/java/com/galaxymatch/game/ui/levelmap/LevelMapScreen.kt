@@ -34,7 +34,14 @@ import com.galaxymatch.game.ui.theme.GameBackground
  * @param onSettingsClicked Called when the player taps the settings gear icon
  */
 @Composable
-fun LevelMapScreen(onLevelSelected: (Int) -> Unit, onSettingsClicked: () -> Unit, onStatsClicked: () -> Unit) {
+fun LevelMapScreen(
+    onLevelSelected: (Int) -> Unit,
+    onSettingsClicked: () -> Unit,
+    onStatsClicked: () -> Unit,
+    onDailyChallengeClicked: () -> Unit = {},
+    onAchievementsClicked: () -> Unit = {},
+    onTimedChallengeClicked: () -> Unit = {}
+) {
     val viewModel = remember { LevelMapViewModel() }
     val state by viewModel.uiState.collectAsState()
 
@@ -70,8 +77,53 @@ fun LevelMapScreen(onLevelSelected: (Int) -> Unit, onSettingsClicked: () -> Unit
             // Icon buttons on the right side
             Row(
                 modifier = Modifier.align(Alignment.CenterEnd),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
+                // Daily Challenge button
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.15f))
+                        .bounceClick(onClick = onDailyChallengeClicked),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "\uD83D\uDCC5", // Calendar emoji
+                        fontSize = 18.sp,
+                        color = Color.White
+                    )
+                }
+                // Timed Challenge button
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.15f))
+                        .bounceClick(onClick = onTimedChallengeClicked),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "\u23F1", // Stopwatch emoji
+                        fontSize = 18.sp,
+                        color = Color.White
+                    )
+                }
+                // Achievements button
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.15f))
+                        .bounceClick(onClick = onAchievementsClicked),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "\uD83C\uDFC6", // Trophy emoji
+                        fontSize = 18.sp,
+                        color = Color.White
+                    )
+                }
                 // Stats button
                 Box(
                     modifier = Modifier
@@ -83,7 +135,7 @@ fun LevelMapScreen(onLevelSelected: (Int) -> Unit, onSettingsClicked: () -> Unit
                 ) {
                     Text(
                         text = "\uD83D\uDCCA", // Bar chart emoji
-                        fontSize = 20.sp,
+                        fontSize = 18.sp,
                         color = Color.White
                     )
                 }
@@ -98,7 +150,7 @@ fun LevelMapScreen(onLevelSelected: (Int) -> Unit, onSettingsClicked: () -> Unit
                 ) {
                     Text(
                         text = "\u2699",
-                        fontSize = 22.sp,
+                        fontSize = 20.sp,
                         color = Color.White
                     )
                 }

@@ -61,6 +61,17 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
     private var powerUpsThisGame = 0
     private val gemColorCountsThisGame = mutableMapOf<GemType, Int>()
 
+    // ===== Special Mode Detection =====
+    /** True if this is a daily challenge (levelNumber == -1) */
+    private val isDailyChallenge = levelNumber == -1
+    /** True if this is a timed challenge (levelNumber <= -100) */
+    private val isTimedMode = levelNumber <= -100
+    /** Timed mode difficulty (extracted from sentinel value) */
+    private val timedDifficulty: TimedDifficulty? =
+        if (isTimedMode) TimedDifficulty.entries.getOrNull(-(levelNumber + 100)) else null
+    /** Coroutine job for the timed mode countdown timer */
+    private var timerJob: Job? = null
+
     init {
         loadLevelPreview(levelNumber)
         loadSettings()
@@ -98,12 +109,40 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
      * only after the player taps "Play!" in the pre-level dialog.
      */
     private fun loadLevelPreview(level: Int) {
-        val config = ServiceLocator.levelRepository.getLevel(level) ?: return
+        val config = getConfigForLevel(level) ?: return
         _uiState.value = GameUiState(
             levelConfig = config,
             levelNumber = level,
-            showPreLevelDialog = true  // Show dialog — board stays null
+            showPreLevelDialog = true,  // Show dialog — board stays null
+            isTimedMode = isTimedMode,
+            isDailyChallenge = isDailyChallenge
         )
+    }
+
+    /**
+     * Get the level config, handling special sentinel values:
+     * -1 = daily challenge, <= -100 = timed challenge
+     */
+    private fun getConfigForLevel(level: Int): LevelConfig? {
+        return when {
+            isDailyChallenge -> {
+                ServiceLocator.dailyChallengeRepository.generateTodayLevel()
+            }
+            isTimedMode -> {
+                val diff = timedDifficulty ?: return null
+                LevelConfig(
+                    levelNumber = level,
+                    rows = 8, cols = 8,
+                    maxMoves = Int.MAX_VALUE,  // Unlimited moves in timed mode
+                    targetScore = Int.MAX_VALUE,
+                    twoStarScore = Int.MAX_VALUE,
+                    threeStarScore = Int.MAX_VALUE,
+                    availableGemTypes = 5,
+                    description = "Timed Challenge — ${diff.label} (${diff.seconds}s)"
+                )
+            }
+            else -> ServiceLocator.levelRepository.getLevel(level)
+        }
     }
 
     /**
@@ -119,7 +158,7 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
      * Start (or restart) a level.
      */
     private fun startLevel(level: Int) {
-        val config = ServiceLocator.levelRepository.getLevel(level) ?: return
+        val config = getConfigForLevel(level) ?: return
         engine = GameEngine(config)
         val board = engine.initializeBoard()
 
@@ -143,7 +182,9 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
             // === Initialize objective tracking ===
             objectiveType = config.objective,
             iceBroken = 0,
-            totalIce = config.obstacles.count { it.value == ObstacleType.Ice },
+            totalIce = config.obstacles.count {
+                it.value == ObstacleType.Ice || it.value == ObstacleType.ReinforcedIce
+            },
             gemsCleared = 0,
             targetGemCount = when (config.objective) {
                 is ObjectiveType.ClearGemType -> config.objective.targetCount
@@ -153,7 +194,10 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
                 is ObjectiveType.ClearGemType -> config.objective.gemType
                 else -> null
             },
-            objectiveComplete = false
+            objectiveComplete = false,
+            isTimedMode = isTimedMode,
+            isDailyChallenge = isDailyChallenge,
+            timeRemaining = timedDifficulty?.seconds ?: 0
         )
 
         // Animate gems dropping in from above over 800ms
@@ -163,6 +207,11 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
             }
             // Snap to exactly 1f when done (ensure no floating-point imprecision)
             _uiState.update { it.copy(boardEntryProgress = 1f) }
+
+            // Start countdown timer for timed mode
+            if (isTimedMode && timedDifficulty != null) {
+                startTimedCountdown()
+            }
         }
 
         // Load the player's available stars for power-ups
@@ -530,6 +579,11 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
                 )
             }
 
+            // === Timed mode: award time bonus for combos ===
+            if (isTimedMode && engine.comboCount > 0) {
+                awardTimeBonus(engine.comboCount)
+            }
+
             // If no more matches, the cascade is done
             if (!result.hasMoreMatches) break
         }
@@ -582,8 +636,8 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
                     haptic.vibrateGameOver()
                 }
 
-                // Save progress if the player won
-                if (endPhase == GamePhase.LevelComplete) {
+                // Save progress if the player won (skip for special modes)
+                if (endPhase == GamePhase.LevelComplete && !isDailyChallenge && !isTimedMode) {
                     viewModelScope.launch {
                         ServiceLocator.progressRepository.saveProgress(
                             levelNumber = levelNumber,
@@ -593,8 +647,29 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
                     }
                 }
 
+                // Daily challenge: mark completed
+                if (isDailyChallenge && endPhase == GamePhase.LevelComplete) {
+                    viewModelScope.launch {
+                        ServiceLocator.dailyChallengeRepository.markCompleted(engine.score)
+                    }
+                }
+
+                // Timed mode: save best score
+                if (isTimedMode) {
+                    timerJob?.cancel()
+                    val diff = timedDifficulty
+                    if (diff != null) {
+                        viewModelScope.launch {
+                            ServiceLocator.timedChallengeRepository.saveBestScore(diff, engine.score)
+                        }
+                    }
+                }
+
                 // Save statistics (win or lose)
                 saveStatistics()
+
+                // Check achievements
+                checkAchievements()
 
                 _uiState.update {
                     it.copy(
@@ -760,6 +835,7 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
      */
     fun restartLevel() {
         hintTimerJob?.cancel()
+        timerJob?.cancel()
         undoSnapshot = null
         _uiState.update { it.copy(showRestartDialog = false) }
         startLevel(_uiState.value.levelNumber)
@@ -1040,6 +1116,98 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
             }
         }
     }
+
+    // ===== Timed Challenge: Countdown Timer =====
+
+    /**
+     * Start the 1-second countdown for timed challenge mode.
+     * Decrements timeRemaining every second. On reaching 0, triggers game over.
+     * Awards time bonus after cascades based on combo count.
+     */
+    private fun startTimedCountdown() {
+        timerJob?.cancel()
+        timerJob = viewModelScope.launch {
+            while (_uiState.value.timeRemaining > 0) {
+                delay(1000L)
+                val currentPhase = _uiState.value.phase
+                // Only countdown during active gameplay
+                if (currentPhase == GamePhase.GameOver || currentPhase == GamePhase.LevelComplete) break
+
+                _uiState.update { it.copy(timeRemaining = it.timeRemaining - 1) }
+
+                if (_uiState.value.timeRemaining <= 0) {
+                    // Time's up!
+                    timerJob?.cancel()
+                    sound.playGameOver()
+                    haptic.vibrateGameOver()
+
+                    // Save timed score
+                    val diff = timedDifficulty
+                    if (diff != null) {
+                        ServiceLocator.timedChallengeRepository.saveBestScore(diff, engine.score)
+                    }
+                    saveStatistics()
+                    checkAchievements()
+
+                    _uiState.update {
+                        it.copy(phase = GamePhase.GameOver, stars = 0)
+                    }
+                    break
+                }
+            }
+        }
+    }
+
+    /**
+     * Award time bonus after a cascade in timed mode.
+     * Each combo level beyond 0 adds 2 seconds.
+     */
+    private fun awardTimeBonus(comboCount: Int) {
+        if (!isTimedMode || comboCount <= 0) return
+        val bonus = comboCount * 2
+        _uiState.update {
+            it.copy(
+                timeRemaining = it.timeRemaining + bonus,
+                timeBonusPopup = bonus
+            )
+        }
+        // Clear the popup after a brief delay
+        viewModelScope.launch {
+            delay(800L)
+            _uiState.update { it.copy(timeBonusPopup = 0) }
+        }
+    }
+
+    // ===== Achievement System Integration =====
+
+    /**
+     * Check and unlock any newly earned achievements.
+     * Called after each level completion (win or loss).
+     */
+    private fun checkAchievements() {
+        viewModelScope.launch {
+            val stats = statsRepo.getStatistics().first()
+            val progress = ServiceLocator.progressRepository.getProgress().first()
+            val dailyState = ServiceLocator.dailyChallengeRepository.getState().first()
+
+            val newlyUnlocked = ServiceLocator.achievementRepository
+                .checkAndUnlockAchievements(stats, progress, dailyState)
+
+            // Show achievement toast for the first newly unlocked one
+            if (newlyUnlocked.isNotEmpty()) {
+                val firstId = newlyUnlocked.first()
+                val definition = com.galaxymatch.game.data.AchievementDefinitions.all
+                    .find { it.id == firstId }
+                if (definition != null) {
+                    _uiState.update {
+                        it.copy(achievementUnlocked = "${definition.emoji} ${definition.title}")
+                    }
+                    delay(3000L)
+                    _uiState.update { it.copy(achievementUnlocked = null) }
+                }
+            }
+        }
+    }
 }
 
 /**
@@ -1160,5 +1328,21 @@ data class GameUiState(
 
     // === Accessibility ===
     /** Whether colorblind mode is enabled (draws shape overlays on gems). */
-    val colorblindMode: Boolean = false
+    val colorblindMode: Boolean = false,
+
+    // === Daily Challenge Mode ===
+    /** Whether this is a daily challenge game. */
+    val isDailyChallenge: Boolean = false,
+
+    // === Timed Challenge Mode ===
+    /** Whether this is a timed challenge game. */
+    val isTimedMode: Boolean = false,
+    /** Seconds remaining in the countdown (timed mode only). */
+    val timeRemaining: Int = 0,
+    /** Time bonus popup value (e.g., +4s). 0 = no popup. */
+    val timeBonusPopup: Int = 0,
+
+    // === Achievement System ===
+    /** Achievement just unlocked (emoji + title text). Null = no toast. */
+    val achievementUnlocked: String? = null
 )

@@ -130,8 +130,8 @@ class GameEngine(private val levelConfig: LevelConfig) {
             }
         }
 
-        // Copy obstacles from level config into the board state
-        board = BoardState(levelConfig.rows, levelConfig.cols, grid, levelConfig.obstacles)
+        // Copy obstacles and bombs from level config into the board state
+        board = BoardState(levelConfig.rows, levelConfig.cols, grid, levelConfig.obstacles, levelConfig.bombs)
         score = 0
         movesRemaining = levelConfig.maxMoves
         comboCount = 0
@@ -158,6 +158,9 @@ class GameEngine(private val levelConfig: LevelConfig) {
         if (!from.isAdjacentTo(to)) return false
         if (board.gemAt(from) == null || board.gemAt(to) == null) return false
 
+        // Locked gems cannot be swapped
+        if (board.isLocked(from) || board.isLocked(to)) return false
+
         // Check for special + special combo
         val gem1 = board.gemAt(from)!!
         val gem2 = board.gemAt(to)!!
@@ -180,6 +183,19 @@ class GameEngine(private val levelConfig: LevelConfig) {
 
         // Valid move — deduct a move
         movesRemaining--
+
+        // === Decrement all bomb timers ===
+        if (board.bombs.isNotEmpty()) {
+            val updatedBombs = board.bombs.mapValues { (_, timer) -> timer - 1 }
+            board = BoardState(board.rows, board.cols, board.grid, board.obstacles, updatedBombs)
+            if (updatedBombs.any { it.value <= 0 }) {
+                // A bomb exploded! Game over.
+                phase = GamePhase.GameOver
+                lastMatches = matches
+                return true
+            }
+        }
+
         comboCount = 0
         phase = GamePhase.Matching
         lastMatches = matches
@@ -200,6 +216,17 @@ class GameEngine(private val levelConfig: LevelConfig) {
         ) ?: return false
 
         movesRemaining--
+
+        // === Decrement all bomb timers ===
+        if (board.bombs.isNotEmpty()) {
+            val updatedBombs = board.bombs.mapValues { (_, timer) -> timer - 1 }
+            board = BoardState(board.rows, board.cols, board.grid, board.obstacles, updatedBombs)
+            if (updatedBombs.any { it.value <= 0 }) {
+                phase = GamePhase.GameOver
+                return true
+            }
+        }
+
         comboCount = 0
 
         // === Track clears for objectives (before removing gems from the grid) ===
@@ -291,20 +318,46 @@ class GameEngine(private val levelConfig: LevelConfig) {
         }
         positionsToClear.addAll(additionalClears)
 
-        // === Break ice at cleared positions ===
-        // When a gem at an ice position is matched, the ice breaks.
-        // We track removed obstacles to update the board state.
+        // === Break ice / reinforced ice at cleared positions ===
         var updatedObstacles = board.obstacles
         var iceBrokenThisStep = 0
         for (pos in positionsToClear) {
-            if (board.getObstacle(pos) == ObstacleType.Ice) {
-                updatedObstacles = updatedObstacles - pos
-                iceBrokenThisStep++
+            when (board.getObstacle(pos)) {
+                ObstacleType.ReinforcedIce -> {
+                    // Downgrade to normal Ice (first hit)
+                    updatedObstacles = updatedObstacles - pos + (pos to ObstacleType.Ice)
+                }
+                ObstacleType.Ice -> {
+                    // Fully break the ice
+                    updatedObstacles = updatedObstacles - pos
+                    iceBrokenThisStep++
+                }
+                else -> { /* no-op for Stone, Locked, or no obstacle */ }
             }
         }
-        // Track ice broken for BreakAllIce objective
         if (iceBrokenThisStep > 0) {
             objectiveTracker.recordIceBroken(iceBrokenThisStep)
+        }
+
+        // === Break locks adjacent to cleared positions ===
+        val locksToBreak = mutableSetOf<Position>()
+        for (clearedPos in positionsToClear) {
+            for (neighbor in listOf(clearedPos.up(), clearedPos.down(), clearedPos.left(), clearedPos.right())) {
+                if (board.isInBounds(neighbor) && updatedObstacles[neighbor] == ObstacleType.Locked) {
+                    locksToBreak.add(neighbor)
+                }
+            }
+        }
+        for (lockPos in locksToBreak) {
+            updatedObstacles = updatedObstacles - lockPos
+        }
+
+        // === Defuse bombs at cleared positions ===
+        var updatedBombs = board.bombs
+        for (pos in positionsToClear) {
+            if (pos in updatedBombs) {
+                updatedBombs = updatedBombs - pos
+            }
         }
 
         // Clear all matched/affected positions
@@ -314,19 +367,34 @@ class GameEngine(private val levelConfig: LevelConfig) {
 
         // Place newly created special gems
         for (creation in specialsToCreate) {
-            // Only place if the position was cleared (it should be)
             if (board.gemAt(creation.position) == null) {
                 board.setGem(creation.position, creation.gem)
             }
         }
 
-        // Update board with broken ice removed (if any changed)
-        if (updatedObstacles !== board.obstacles) {
-            board = BoardState(board.rows, board.cols, board.grid, updatedObstacles)
-        }
+        // Update board with modified obstacles and bombs
+        board = BoardState(board.rows, board.cols, board.grid, updatedObstacles, updatedBombs)
 
         // Apply gravity — gems fall down, new ones fill from top
         val gravityResult = gravityProcessor.applyGravity(board, availableTypes)
+
+        // === Remap bomb positions after gravity ===
+        if (board.bombs.isNotEmpty()) {
+            val remappedBombs = mutableMapOf<Position, Int>()
+            for ((bombPos, timer) in board.bombs) {
+                val movement = gravityResult.movements.find { m ->
+                    m.fromRow == bombPos.row && m.col == bombPos.col && !m.isNew
+                }
+                if (movement != null) {
+                    remappedBombs[Position(movement.toRow, movement.col)] = timer
+                } else if (board.gemAt(bombPos) != null) {
+                    // Bomb gem didn't move
+                    remappedBombs[bombPos] = timer
+                }
+                // If gem was cleared (bomb should have been defused), skip it
+            }
+            board = BoardState(board.rows, board.cols, board.grid, board.obstacles, remappedBombs)
+        }
 
         // Check for new matches (cascade chain)
         val newMatches = matchDetector.findAllMatches(board)
@@ -480,14 +548,27 @@ class GameEngine(private val levelConfig: LevelConfig) {
         // Remove the gem
         board.setGem(position, null)
 
-        // If this position had ice, break it
+        // Handle obstacle at this position (ice, reinforced ice, locked)
         var updatedObstacles = board.obstacles
-        if (board.getObstacle(position) == ObstacleType.Ice) {
-            updatedObstacles = updatedObstacles - position
-            board = BoardState(board.rows, board.cols, board.grid, updatedObstacles)
-            // Track ice broken for BreakAllIce objective
-            objectiveTracker.recordIceBroken(1)
+        var updatedBombs = board.bombs
+        when (board.getObstacle(position)) {
+            ObstacleType.ReinforcedIce -> {
+                updatedObstacles = updatedObstacles - position + (position to ObstacleType.Ice)
+            }
+            ObstacleType.Ice -> {
+                updatedObstacles = updatedObstacles - position
+                objectiveTracker.recordIceBroken(1)
+            }
+            ObstacleType.Locked -> {
+                updatedObstacles = updatedObstacles - position
+            }
+            else -> {}
         }
+        // Defuse bomb at hammer position
+        if (position in updatedBombs) {
+            updatedBombs = updatedBombs - position
+        }
+        board = BoardState(board.rows, board.cols, board.grid, updatedObstacles, updatedBombs)
 
         // Apply gravity — gems fall down, new ones fill from top
         val gravityResult = gravityProcessor.applyGravity(board, availableTypes)
@@ -545,17 +626,31 @@ class GameEngine(private val levelConfig: LevelConfig) {
         // === Track clears for objectives (before removing gems) ===
         objectiveTracker.recordSpecialClears(clearedPositions, board)
 
-        // === Break ice at cleared positions & track for objectives ===
+        // === Break ice / reinforced ice at cleared positions ===
         var updatedObstacles = board.obstacles
         var iceBrokenByBomb = 0
         for (pos in clearedPositions) {
-            if (board.getObstacle(pos) == ObstacleType.Ice) {
-                updatedObstacles = updatedObstacles - pos
-                iceBrokenByBomb++
+            when (board.getObstacle(pos)) {
+                ObstacleType.ReinforcedIce -> {
+                    updatedObstacles = updatedObstacles - pos + (pos to ObstacleType.Ice)
+                }
+                ObstacleType.Ice -> {
+                    updatedObstacles = updatedObstacles - pos
+                    iceBrokenByBomb++
+                }
+                else -> {}
             }
         }
         if (iceBrokenByBomb > 0) {
             objectiveTracker.recordIceBroken(iceBrokenByBomb)
+        }
+
+        // Defuse bombs at cleared positions
+        var updatedBombs = board.bombs
+        for (pos in clearedPositions) {
+            if (pos in updatedBombs) {
+                updatedBombs = updatedBombs - pos
+            }
         }
 
         // Clear all affected positions
@@ -563,10 +658,8 @@ class GameEngine(private val levelConfig: LevelConfig) {
             board.setGem(pos, null)
         }
 
-        // Update board with broken ice removed (if any)
-        if (updatedObstacles !== board.obstacles) {
-            board = BoardState(board.rows, board.cols, board.grid, updatedObstacles)
-        }
+        // Update board
+        board = BoardState(board.rows, board.cols, board.grid, updatedObstacles, updatedBombs)
 
         // Score based on gems cleared (same rate as special combo)
         score += clearedPositions.size * 60
@@ -667,11 +760,25 @@ class GameEngine(private val levelConfig: LevelConfig) {
         // Remove the target gem
         board.setGem(targetPosition, null)
 
-        // Break ice if present at this position
-        if (board.getObstacle(targetPosition) == ObstacleType.Ice) {
-            val updatedObstacles = board.obstacles - targetPosition
-            board = BoardState(board.rows, board.cols, board.grid, updatedObstacles)
-            objectiveTracker.recordIceBroken(1)
+        // Handle obstacle at bonus-move target position
+        var updatedObstacles = board.obstacles
+        when (board.getObstacle(targetPosition)) {
+            ObstacleType.ReinforcedIce -> {
+                updatedObstacles = updatedObstacles - targetPosition + (targetPosition to ObstacleType.Ice)
+            }
+            ObstacleType.Ice -> {
+                updatedObstacles = updatedObstacles - targetPosition
+                objectiveTracker.recordIceBroken(1)
+            }
+            else -> {}
+        }
+        // Defuse bomb at bonus-move target
+        var updatedBombs = board.bombs
+        if (targetPosition in updatedBombs) {
+            updatedBombs = updatedBombs - targetPosition
+        }
+        if (updatedObstacles !== board.obstacles || updatedBombs !== board.bombs) {
+            board = BoardState(board.rows, board.cols, board.grid, updatedObstacles, updatedBombs)
         }
 
         // Consume one move

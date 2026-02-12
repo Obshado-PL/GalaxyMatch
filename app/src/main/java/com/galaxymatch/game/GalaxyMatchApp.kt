@@ -11,6 +11,13 @@ import com.galaxymatch.game.data.SettingsDataStore
 import com.galaxymatch.game.data.SettingsRepository
 import com.galaxymatch.game.data.StatisticsDataStore
 import com.galaxymatch.game.data.StatisticsRepository
+import com.galaxymatch.game.data.DailyChallengeDataStore
+import com.galaxymatch.game.data.DailyChallengeRepository
+import com.galaxymatch.game.data.AchievementDataStore
+import com.galaxymatch.game.data.AchievementRepository
+import com.galaxymatch.game.data.TimedChallengeDataStore
+import com.galaxymatch.game.data.TimedChallengeRepository
+import com.galaxymatch.game.engine.LevelGenerator
 
 /**
  * Application class for Galaxy Match.
@@ -51,13 +58,25 @@ object ServiceLocator {
         private set
     lateinit var statisticsRepository: StatisticsRepository
         private set
+    lateinit var dailyChallengeRepository: DailyChallengeRepository
+        private set
+    lateinit var achievementRepository: AchievementRepository
+        private set
+    lateinit var timedChallengeRepository: TimedChallengeRepository
+        private set
 
     fun initialize(context: Application) {
-        levelRepository = LevelRepository(LevelDataSource)
+        val levelGenerator = LevelGenerator()
+        levelRepository = LevelRepository(LevelDataSource, levelGenerator)
         progressRepository = ProgressRepository(ProgressDataStore(context))
         soundManager = SoundManager(context)
         settingsRepository = SettingsRepository(SettingsDataStore(context))
         hapticManager = HapticManager(context)
         statisticsRepository = StatisticsRepository(StatisticsDataStore(context))
+        dailyChallengeRepository = DailyChallengeRepository(
+            DailyChallengeDataStore(context), levelGenerator
+        )
+        achievementRepository = AchievementRepository(AchievementDataStore(context))
+        timedChallengeRepository = TimedChallengeRepository(TimedChallengeDataStore(context))
     }
 }

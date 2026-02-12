@@ -40,5 +40,11 @@ data class LevelConfig(
      * Default = ReachScore (classic behavior: win when score >= targetScore).
      * See ObjectiveType for all options (BreakAllIce, ClearGemType, etc.).
      */
-    val objective: ObjectiveType = ObjectiveType.ReachScore
+    val objective: ObjectiveType = ObjectiveType.ReachScore,
+    /**
+     * Timed bomb positions for this level.
+     * Key = board position, Value = number of moves before the bomb explodes.
+     * Empty map (default) means no bombs.
+     */
+    val bombs: Map<Position, Int> = emptyMap()
 )
