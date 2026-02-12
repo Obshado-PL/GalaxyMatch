@@ -6,6 +6,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import android.os.Build
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -25,6 +26,9 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import com.galaxymatch.game.engine.GravityProcessor
 import com.galaxymatch.game.model.BoardState
@@ -196,6 +200,12 @@ fun BoardCanvas(
             .padding(horizontal = 8.dp)
             // Make the canvas aspect ratio match the board proportions
             .aspectRatio(boardState.cols.toFloat() / boardState.rows.toFloat())
+            // === System gesture exclusion ===
+            // Tells Android to not intercept edge swipes over the game board.
+            // This prevents the system "back" gesture from triggering when the
+            // player swipes gems near the left/right edges of the screen.
+            // Android limits exclusion zones to 200dp per edge.
+            .systemGestureExclusion()
             // Handle swipe gestures for gem swapping
             // === Power-up target selection: tap gesture ===
             // When a power-up is active, we listen for taps instead of drags.
@@ -552,5 +562,33 @@ fun BoardCanvas(
                 center = Offset(particle.x, particle.y)
             )
         }
+    }
+}
+
+/**
+ * Modifier that excludes the entire composable area from Android's system
+ * gesture zones (the left/right edge swipe-to-go-back gesture).
+ *
+ * This ensures that swipes near the screen edges are treated as gameplay
+ * input (gem swaps) rather than system navigation gestures.
+ *
+ * Uses the Android View's setSystemGestureExclusionRects API (API 29+).
+ * Android limits total exclusion to 200dp per edge, but for a centered
+ * game board this covers the critical swipe areas.
+ */
+@Composable
+private fun Modifier.systemGestureExclusion(): Modifier {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return this
+
+    val view = LocalView.current
+    return this.onGloballyPositioned { layoutCoordinates ->
+        val bounds = layoutCoordinates.boundsInWindow()
+        val exclusionRect = android.graphics.Rect(
+            bounds.left.toInt(),
+            bounds.top.toInt(),
+            bounds.right.toInt(),
+            bounds.bottom.toInt()
+        )
+        view.systemGestureExclusionRects = listOf(exclusionRect)
     }
 }

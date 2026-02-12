@@ -20,7 +20,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.activity.compose.BackHandler
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -62,6 +65,17 @@ fun GameScreen(
     // Create ViewModel — remember ensures it survives recomposition
     val viewModel = remember(levelNumber) { GameViewModel(levelNumber) }
     val state by viewModel.uiState.collectAsState()
+
+    // === Back gesture / button intercept ===
+    // Prevents the Android back gesture (swipe from edge) from accidentally
+    // exiting the game and losing progress. Shows a confirmation dialog instead.
+    var showQuitDialog by remember { mutableStateOf(false) }
+
+    BackHandler(
+        enabled = state.phase != GamePhase.GameOver && state.phase != GamePhase.LevelComplete
+    ) {
+        showQuitDialog = true
+    }
 
     // === Overlay animation state ===
     // These Animatable values drive the game-over / level-complete overlay
@@ -599,6 +613,49 @@ fun GameScreen(
                     )
                 ) {
                     Text("Cancel", color = Color.White)
+                }
+            },
+            containerColor = Color(0xFF2D2B55),
+            titleContentColor = Color.White,
+            textContentColor = Color.White.copy(alpha = 0.8f)
+        )
+    }
+
+    // === Quit Confirmation Dialog ===
+    // Shown when the player uses the back gesture or back button during gameplay
+    if (showQuitDialog) {
+        AlertDialog(
+            onDismissRequest = { showQuitDialog = false },
+            title = {
+                Text(
+                    text = "Quit Level?",
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text("Your progress on this level will be lost.")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showQuitDialog = false
+                        onBackToMap()
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFCC3333)
+                    )
+                ) {
+                    Text("Quit", color = Color.White)
+                }
+            },
+            dismissButton = {
+                Button(
+                    onClick = { showQuitDialog = false },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.White.copy(alpha = 0.15f)
+                    )
+                ) {
+                    Text("Keep Playing", color = Color.White)
                 }
             },
             containerColor = Color(0xFF2D2B55),
