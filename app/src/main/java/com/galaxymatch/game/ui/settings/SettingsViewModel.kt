@@ -25,6 +25,7 @@ class SettingsViewModel : ViewModel() {
     private val settingsRepo = ServiceLocator.settingsRepository
     private val progressRepo = ServiceLocator.progressRepository
     private val soundManager = ServiceLocator.soundManager
+    private val hapticManager = ServiceLocator.hapticManager
 
     init {
         loadSettings()
@@ -41,6 +42,8 @@ class SettingsViewModel : ViewModel() {
                     it.copy(
                         sfxMuted = settings.sfxMuted,
                         musicMuted = settings.musicMuted,
+                        hapticMuted = settings.hapticMuted,
+                        colorblindMode = settings.colorblindMode,
                         isLoaded = true
                     )
                 }
@@ -79,6 +82,31 @@ class SettingsViewModel : ViewModel() {
         }
     }
 
+    /**
+     * Toggle haptic feedback on/off.
+     * Updates HapticManager immediately and saves to disk.
+     */
+    fun toggleHaptic() {
+        val newValue = !_uiState.value.hapticMuted
+        _uiState.update { it.copy(hapticMuted = newValue) }
+        hapticManager.isHapticMuted = newValue
+        viewModelScope.launch {
+            settingsRepo.saveHapticMuted(newValue)
+        }
+    }
+
+    /**
+     * Toggle colorblind mode on/off.
+     * Saves to disk; the game screen reads this setting when rendering gems.
+     */
+    fun toggleColorblindMode() {
+        val newValue = !_uiState.value.colorblindMode
+        _uiState.update { it.copy(colorblindMode = newValue) }
+        viewModelScope.launch {
+            settingsRepo.saveColorblindMode(newValue)
+        }
+    }
+
     /** Show the reset progress confirmation dialog. */
     fun onResetProgressClicked() {
         _uiState.update { it.copy(showResetDialog = true) }
@@ -99,10 +127,12 @@ class SettingsViewModel : ViewModel() {
         viewModelScope.launch {
             progressRepo.clearAllProgress()
             settingsRepo.clearAll()
-            // Restore default sound settings
+            ServiceLocator.statisticsRepository.clearAll()
+            // Restore default settings
             soundManager.isSfxMuted = false
             soundManager.isMusicMuted = false
             soundManager.startBackgroundMusic()
+            hapticManager.isHapticMuted = false
         }
     }
 }
@@ -113,6 +143,8 @@ class SettingsViewModel : ViewModel() {
 data class SettingsUiState(
     val sfxMuted: Boolean = false,
     val musicMuted: Boolean = false,
+    val hapticMuted: Boolean = false,
+    val colorblindMode: Boolean = false,
     val showResetDialog: Boolean = false,
     val isLoaded: Boolean = false
 )

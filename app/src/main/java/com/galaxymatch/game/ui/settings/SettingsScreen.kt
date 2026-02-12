@@ -82,6 +82,24 @@ fun SettingsScreen(onBackToMap: () -> Unit) {
             onToggle = { viewModel.toggleMusic() }
         )
 
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // === Haptic Feedback Toggle ===
+        SettingsToggleRow(
+            label = "Haptic Feedback",
+            isEnabled = !state.hapticMuted,
+            onToggle = { viewModel.toggleHaptic() }
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // === Colorblind Mode Toggle ===
+        SettingsToggleRow(
+            label = "Colorblind Mode",
+            isEnabled = state.colorblindMode,
+            onToggle = { viewModel.toggleColorblindMode() }
+        )
+
         Spacer(modifier = Modifier.height(48.dp))
 
         // === Reset Progress Button ===

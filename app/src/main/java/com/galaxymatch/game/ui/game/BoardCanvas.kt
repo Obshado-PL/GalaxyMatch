@@ -77,6 +77,7 @@ fun BoardCanvas(
     boardEntryProgress: Float = 1f,
     activePowerUp: PowerUpType? = null,
     comboLevel: Int = 0,
+    colorblindMode: Boolean = false,
     onSwipe: (Position, Position) -> Unit,
     onPowerUpTap: (Position) -> Unit = {},
     modifier: Modifier = Modifier
@@ -478,7 +479,8 @@ fun BoardCanvas(
                         centerY = centerY,
                         radius = drawRadius,
                         alpha = alpha,
-                        specialAnimProgress = specialAnimProgress
+                        specialAnimProgress = specialAnimProgress,
+                        colorblindMode = colorblindMode
                     )
 
                     // === Ice overlay ===

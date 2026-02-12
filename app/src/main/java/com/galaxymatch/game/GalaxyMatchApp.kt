@@ -2,12 +2,15 @@ package com.galaxymatch.game
 
 import android.app.Application
 import com.galaxymatch.game.audio.SoundManager
+import com.galaxymatch.game.haptic.HapticManager
 import com.galaxymatch.game.data.LevelDataSource
 import com.galaxymatch.game.data.LevelRepository
 import com.galaxymatch.game.data.ProgressDataStore
 import com.galaxymatch.game.data.ProgressRepository
 import com.galaxymatch.game.data.SettingsDataStore
 import com.galaxymatch.game.data.SettingsRepository
+import com.galaxymatch.game.data.StatisticsDataStore
+import com.galaxymatch.game.data.StatisticsRepository
 
 /**
  * Application class for Galaxy Match.
@@ -44,11 +47,17 @@ object ServiceLocator {
         private set
     lateinit var settingsRepository: SettingsRepository
         private set
+    lateinit var hapticManager: HapticManager
+        private set
+    lateinit var statisticsRepository: StatisticsRepository
+        private set
 
     fun initialize(context: Application) {
         levelRepository = LevelRepository(LevelDataSource)
         progressRepository = ProgressRepository(ProgressDataStore(context))
         soundManager = SoundManager(context)
         settingsRepository = SettingsRepository(SettingsDataStore(context))
+        hapticManager = HapticManager(context)
+        statisticsRepository = StatisticsRepository(StatisticsDataStore(context))
     }
 }

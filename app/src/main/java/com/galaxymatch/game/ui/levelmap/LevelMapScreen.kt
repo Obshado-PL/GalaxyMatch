@@ -34,7 +34,7 @@ import com.galaxymatch.game.ui.theme.GameBackground
  * @param onSettingsClicked Called when the player taps the settings gear icon
  */
 @Composable
-fun LevelMapScreen(onLevelSelected: (Int) -> Unit, onSettingsClicked: () -> Unit) {
+fun LevelMapScreen(onLevelSelected: (Int) -> Unit, onSettingsClicked: () -> Unit, onStatsClicked: () -> Unit) {
     val viewModel = remember { LevelMapViewModel() }
     val state by viewModel.uiState.collectAsState()
 
@@ -67,23 +67,41 @@ fun LevelMapScreen(onLevelSelected: (Int) -> Unit, onSettingsClicked: () -> Unit
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth()
             )
-            // Gear/settings button on the right side
-            Box(
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .size(40.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.15f))
-                    .bounceClick(onClick = onSettingsClicked),
-                contentAlignment = Alignment.Center
+            // Icon buttons on the right side
+            Row(
+                modifier = Modifier.align(Alignment.CenterEnd),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Unicode gear icon — lightweight alternative to adding
-                // Material Icons dependency just for one icon
-                Text(
-                    text = "\u2699",
-                    fontSize = 22.sp,
-                    color = Color.White
-                )
+                // Stats button
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.15f))
+                        .bounceClick(onClick = onStatsClicked),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "\uD83D\uDCCA", // Bar chart emoji
+                        fontSize = 20.sp,
+                        color = Color.White
+                    )
+                }
+                // Gear/settings button
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.15f))
+                        .bounceClick(onClick = onSettingsClicked),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "\u2699",
+                        fontSize = 22.sp,
+                        color = Color.White
+                    )
+                }
             }
         }
 

@@ -31,6 +31,10 @@ data class GameRoute(val levelNumber: Int)
 @Serializable
 object SettingsRoute
 
+/** The statistics screen showing aggregate gameplay stats */
+@Serializable
+object StatisticsRoute
+
 /** The results screen shown after completing or failing a level */
 @Serializable
 data class ResultsRoute(

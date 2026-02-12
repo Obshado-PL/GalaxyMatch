@@ -217,6 +217,7 @@ fun GameScreen(
                     boardEntryProgress = state.boardEntryProgress,
                     activePowerUp = state.activePowerUp,
                     comboLevel = state.comboCount,
+                    colorblindMode = state.colorblindMode,
                     onSwipe = { from, to ->
                         viewModel.onSwipe(from, to)
                     },

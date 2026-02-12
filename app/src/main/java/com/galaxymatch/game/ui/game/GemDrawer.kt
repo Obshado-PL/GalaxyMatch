@@ -11,6 +11,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.clipPath
 import com.galaxymatch.game.model.Gem
+import com.galaxymatch.game.model.GemType
 import com.galaxymatch.game.model.SpecialType
 import com.galaxymatch.game.ui.components.toColor
 import com.galaxymatch.game.ui.components.toDarkColor
@@ -44,7 +45,8 @@ fun DrawScope.drawGem(
     centerY: Float,
     radius: Float,
     alpha: Float = 1f,
-    specialAnimProgress: Float = 0f
+    specialAnimProgress: Float = 0f,
+    colorblindMode: Boolean = false
 ) {
     val center = Offset(centerX, centerY)
     val color = gem.type.toColor()
@@ -87,6 +89,11 @@ fun DrawScope.drawGem(
             drawColorBombPattern(center, radius, alpha, specialAnimProgress)
         }
         SpecialType.None -> { /* Regular gem, no extra decoration */ }
+    }
+
+    // === Step 5: Draw colorblind shape overlay ===
+    if (colorblindMode) {
+        drawColorblindShape(gem.type, center, radius, alpha)
     }
 }
 
@@ -232,6 +239,148 @@ private fun DrawScope.drawColorBombPattern(
         color = Color.White.copy(alpha = sparkleAlpha * alpha),
         radius = sparkleRadius,
         center = center
+    )
+}
+
+// ===========================================================================
+// Colorblind Shape Overlays
+// ===========================================================================
+
+/**
+ * Draw a distinctive geometric shape inside the gem for colorblind accessibility.
+ * Each GemType gets a unique shape so players can distinguish gems by shape alone.
+ *
+ * Shapes are drawn as white semi-transparent stroked outlines at ~50% of gem radius.
+ */
+private fun DrawScope.drawColorblindShape(
+    gemType: GemType,
+    center: Offset,
+    radius: Float,
+    alpha: Float
+) {
+    val shapeColor = Color.White.copy(alpha = 0.85f * alpha)
+    val strokeWidth = radius * 0.1f
+    val size = radius * 0.45f
+
+    when (gemType) {
+        GemType.Red -> drawCrossShape(center, size, shapeColor, strokeWidth)
+        GemType.Blue -> drawDiamondShape(center, size, shapeColor, strokeWidth)
+        GemType.Green -> drawTriangleShape(center, size, shapeColor, strokeWidth)
+        GemType.Yellow -> drawStarShape(center, size, shapeColor, strokeWidth)
+        GemType.Orange -> drawSquareShape(center, size, shapeColor, strokeWidth)
+        GemType.Purple -> drawHexagonShape(center, size, shapeColor, strokeWidth)
+    }
+}
+
+/** Red: Cross / Plus (+) */
+private fun DrawScope.drawCrossShape(
+    center: Offset, size: Float, color: Color, strokeWidth: Float
+) {
+    drawLine(
+        color = color,
+        start = Offset(center.x - size, center.y),
+        end = Offset(center.x + size, center.y),
+        strokeWidth = strokeWidth,
+        cap = StrokeCap.Round
+    )
+    drawLine(
+        color = color,
+        start = Offset(center.x, center.y - size),
+        end = Offset(center.x, center.y + size),
+        strokeWidth = strokeWidth,
+        cap = StrokeCap.Round
+    )
+}
+
+/** Blue: Diamond shape */
+private fun DrawScope.drawDiamondShape(
+    center: Offset, size: Float, color: Color, strokeWidth: Float
+) {
+    val path = Path().apply {
+        moveTo(center.x, center.y - size)
+        lineTo(center.x + size, center.y)
+        lineTo(center.x, center.y + size)
+        lineTo(center.x - size, center.y)
+        close()
+    }
+    drawPath(
+        path = path,
+        color = color,
+        style = androidx.compose.ui.graphics.drawscope.Stroke(width = strokeWidth)
+    )
+}
+
+/** Green: Triangle */
+private fun DrawScope.drawTriangleShape(
+    center: Offset, size: Float, color: Color, strokeWidth: Float
+) {
+    val path = Path().apply {
+        moveTo(center.x, center.y - size)
+        lineTo(center.x + size * 0.866f, center.y + size * 0.5f)
+        lineTo(center.x - size * 0.866f, center.y + size * 0.5f)
+        close()
+    }
+    drawPath(
+        path = path,
+        color = color,
+        style = androidx.compose.ui.graphics.drawscope.Stroke(width = strokeWidth)
+    )
+}
+
+/** Yellow: 5-pointed star */
+private fun DrawScope.drawStarShape(
+    center: Offset, size: Float, color: Color, strokeWidth: Float
+) {
+    val outerRadius = size
+    val innerRadius = size * 0.4f
+    val points = 5
+
+    val path = Path().apply {
+        for (i in 0 until points * 2) {
+            val angle = (i * Math.PI / points - Math.PI / 2).toFloat()
+            val r = if (i % 2 == 0) outerRadius else innerRadius
+            val x = center.x + r * kotlin.math.cos(angle)
+            val y = center.y + r * kotlin.math.sin(angle)
+            if (i == 0) moveTo(x, y) else lineTo(x, y)
+        }
+        close()
+    }
+    drawPath(
+        path = path,
+        color = color,
+        style = androidx.compose.ui.graphics.drawscope.Stroke(width = strokeWidth)
+    )
+}
+
+/** Orange: Square */
+private fun DrawScope.drawSquareShape(
+    center: Offset, size: Float, color: Color, strokeWidth: Float
+) {
+    drawRect(
+        color = color,
+        topLeft = Offset(center.x - size, center.y - size),
+        size = Size(size * 2, size * 2),
+        style = androidx.compose.ui.graphics.drawscope.Stroke(width = strokeWidth)
+    )
+}
+
+/** Purple: Hexagon */
+private fun DrawScope.drawHexagonShape(
+    center: Offset, size: Float, color: Color, strokeWidth: Float
+) {
+    val path = Path().apply {
+        for (i in 0 until 6) {
+            val angle = (i * Math.PI / 3 - Math.PI / 2).toFloat()
+            val x = center.x + size * kotlin.math.cos(angle)
+            val y = center.y + size * kotlin.math.sin(angle)
+            if (i == 0) moveTo(x, y) else lineTo(x, y)
+        }
+        close()
+    }
+    drawPath(
+        path = path,
+        color = color,
+        style = androidx.compose.ui.graphics.drawscope.Stroke(width = strokeWidth)
     )
 }
 

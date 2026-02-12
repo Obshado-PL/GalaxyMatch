@@ -37,6 +37,8 @@ class SettingsDataStore(private val context: Context) {
         private val SFX_MUTED_KEY = booleanPreferencesKey("sfx_muted")
         private val MUSIC_MUTED_KEY = booleanPreferencesKey("music_muted")
         private val TUTORIAL_SEEN_KEY = booleanPreferencesKey("tutorial_seen")
+        private val HAPTIC_MUTED_KEY = booleanPreferencesKey("haptic_muted")
+        private val COLORBLIND_MODE_KEY = booleanPreferencesKey("colorblind_mode")
     }
 
     /**
@@ -50,7 +52,9 @@ class SettingsDataStore(private val context: Context) {
             SettingsState(
                 sfxMuted = prefs[SFX_MUTED_KEY] ?: false,
                 musicMuted = prefs[MUSIC_MUTED_KEY] ?: false,
-                tutorialSeen = prefs[TUTORIAL_SEEN_KEY] ?: false
+                tutorialSeen = prefs[TUTORIAL_SEEN_KEY] ?: false,
+                hapticMuted = prefs[HAPTIC_MUTED_KEY] ?: false,
+                colorblindMode = prefs[COLORBLIND_MODE_KEY] ?: false
             )
         }
     }
@@ -73,6 +77,20 @@ class SettingsDataStore(private val context: Context) {
     suspend fun saveTutorialSeen(seen: Boolean) {
         context.settingsDataStore.edit { prefs ->
             prefs[TUTORIAL_SEEN_KEY] = seen
+        }
+    }
+
+    /** Save whether haptic feedback is muted. */
+    suspend fun saveHapticMuted(muted: Boolean) {
+        context.settingsDataStore.edit { prefs ->
+            prefs[HAPTIC_MUTED_KEY] = muted
+        }
+    }
+
+    /** Save whether colorblind mode is enabled. */
+    suspend fun saveColorblindMode(enabled: Boolean) {
+        context.settingsDataStore.edit { prefs ->
+            prefs[COLORBLIND_MODE_KEY] = enabled
         }
     }
 

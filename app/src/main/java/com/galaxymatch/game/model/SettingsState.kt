@@ -13,5 +13,7 @@ package com.galaxymatch.game.model
 data class SettingsState(
     val sfxMuted: Boolean = false,
     val musicMuted: Boolean = false,
-    val tutorialSeen: Boolean = false
+    val tutorialSeen: Boolean = false,
+    val hapticMuted: Boolean = false,
+    val colorblindMode: Boolean = false
 )

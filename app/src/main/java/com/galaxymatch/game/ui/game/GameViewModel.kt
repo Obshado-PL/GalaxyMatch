@@ -39,8 +39,9 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
     private lateinit var engine: GameEngine
     private var currentSwapAction: SwapAction? = null
 
-    // ===== Sound Manager =====
+    // ===== Sound & Haptic Managers =====
     private val sound = ServiceLocator.soundManager
+    private val haptic = ServiceLocator.hapticManager
 
     // ===== Hint System =====
     /** Coroutine job for the idle hint timer. Cancelled on any player input. */
@@ -50,11 +51,42 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
     /** Snapshot of the board/score/moves before the player's last valid swap. */
     private var undoSnapshot: UndoSnapshot? = null
 
-    // ===== Settings Repository =====
+    // ===== Settings & Statistics =====
     private val settingsRepo = ServiceLocator.settingsRepository
+    private val statsRepo = ServiceLocator.statisticsRepository
+
+    /** Accumulates statistics during a single level attempt. Reset on level start. */
+    private var gemsMatchedThisGame = 0
+    private var specialGemsThisGame = 0
+    private var powerUpsThisGame = 0
+    private val gemColorCountsThisGame = mutableMapOf<GemType, Int>()
 
     init {
         loadLevelPreview(levelNumber)
+        loadSettings()
+    }
+
+    /** Load persisted settings and apply them to managers / UI state. */
+    private fun loadSettings() {
+        viewModelScope.launch {
+            val settings = settingsRepo.getSettings().first()
+            haptic.isHapticMuted = settings.hapticMuted
+            _uiState.update { it.copy(colorblindMode = settings.colorblindMode) }
+        }
+    }
+
+    /** Persist accumulated statistics for this level attempt. */
+    private fun saveStatistics() {
+        viewModelScope.launch {
+            statsRepo.incrementStats(
+                gemsMatched = gemsMatchedThisGame,
+                comboReached = _uiState.value.maxComboReached,
+                scoreGained = _uiState.value.score,
+                gemColorCounts = gemColorCountsThisGame.toMap(),
+                specialGemsCreated = specialGemsThisGame,
+                powerUpsUsed = powerUpsThisGame
+            )
+        }
     }
 
     /**
@@ -93,6 +125,12 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
 
         // Reset undo state for the new level
         undoSnapshot = null
+
+        // Reset statistics accumulators
+        gemsMatchedThisGame = 0
+        specialGemsThisGame = 0
+        powerUpsThisGame = 0
+        gemColorCountsThisGame.clear()
 
         _uiState.value = GameUiState(
             board = board,
@@ -183,6 +221,7 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
 
             // === Phase 1: Animate the swap ===
             sound.playSwap()
+            haptic.vibrateSwap()
 
             _uiState.update {
                 it.copy(
@@ -320,6 +359,14 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
             // (match-4 and match-5+ get progressively higher, more exciting pitches)
             val largestMatchSize = engine.lastMatches.maxOfOrNull { it.positions.size } ?: 3
             sound.playMatch(largestMatchSize)
+            haptic.vibrateMatch(largestMatchSize)
+
+            // Track statistics: count matched gems by color
+            for (match in engine.lastMatches) {
+                gemsMatchedThisGame += match.positions.size
+                gemColorCountsThisGame[match.gemType] =
+                    (gemColorCountsThisGame[match.gemType] ?: 0) + match.positions.size
+            }
 
             _uiState.update {
                 it.copy(
@@ -352,16 +399,20 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
 
             // Play cascade sound (pitch + volume escalate with combo level)
             sound.playCascade(engine.comboCount)
+            haptic.vibrateCascade(engine.comboCount)
 
             // If special gems were activated, play the special sound too
             if (result.specialActivations.isNotEmpty()) {
                 sound.playSpecialActivation()
+                haptic.vibrateSpecialActivation()
+                specialGemsThisGame += result.specialActivations.size
             }
 
             // Play ice break sound if any ice was shattered this step
             val iceCountAfter = engine.objectiveTracker.iceBroken
             if (iceCountAfter > iceCountBefore) {
                 sound.playIceBreak()
+                haptic.vibrateIceBreak()
             }
 
             // === Feature 3: Star Progress ===
@@ -486,6 +537,7 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
         // Cascade is complete — check if the board needs shuffling
         if (!engine.shuffleChecker.hasValidMoves(engine.board)) {
             sound.playShuffle()
+            haptic.vibrateShuffle()
             _uiState.update {
                 it.copy(isShuffling = true, shuffleProgress = 0f)
             }
@@ -521,11 +573,13 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
             GamePhase.LevelComplete, GamePhase.GameOver -> {
                 val stars = engine.getStarRating()
 
-                // Play the appropriate end-of-game sound
+                // Play the appropriate end-of-game sound + haptic
                 if (endPhase == GamePhase.LevelComplete) {
                     sound.playLevelComplete()
+                    haptic.vibrateLevelComplete()
                 } else {
                     sound.playGameOver()
+                    haptic.vibrateGameOver()
                 }
 
                 // Save progress if the player won
@@ -538,6 +592,9 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
                         )
                     }
                 }
+
+                // Save statistics (win or lose)
+                saveStatistics()
 
                 _uiState.update {
                     it.copy(
@@ -597,8 +654,9 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
             // Pause between bonus moves for dramatic effect
             delay(400)
 
-            // Play the special activation sound for each bonus move
+            // Play the special activation sound + haptic for each bonus move
             sound.playSpecialActivation()
+            haptic.vibrateSpecialActivation()
 
             // Perform the bonus move in the engine
             val success = engine.performBonusMove()
@@ -661,8 +719,9 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
         // All bonus moves consumed — level complete!
         val stars = engine.getStarRating()
         sound.playLevelComplete()
+        haptic.vibrateLevelComplete()
 
-        // Save progress
+        // Save progress and statistics
         viewModelScope.launch {
             ServiceLocator.progressRepository.saveProgress(
                 levelNumber = levelNumber,
@@ -670,6 +729,7 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
                 score = engine.score
             )
         }
+        saveStatistics()
 
         _uiState.update {
             it.copy(
@@ -834,11 +894,13 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
                 PowerUpType.Hammer -> {
                     if (position == null) return@launch
                     sound.playSpecialActivation()
+                    haptic.vibrateSpecialActivation()
                     engine.useHammer(position)
                 }
                 PowerUpType.ColorBomb -> {
                     if (position == null) return@launch
                     sound.playSpecialActivation()
+                    haptic.vibrateSpecialActivation()
                     engine.useColorBomb(position)
                 }
                 PowerUpType.ExtraMoves -> {
@@ -851,6 +913,9 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
                 startHintTimer()
                 return@launch
             }
+
+            // Track power-up usage for statistics
+            powerUpsThisGame++
 
             // Deduct stars and persist the spend
             val progressRepo = ServiceLocator.progressRepository
@@ -901,6 +966,7 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
                             val stars = engine.getStarRating()
                             if (endPhase == GamePhase.LevelComplete) {
                                 sound.playLevelComplete()
+                                haptic.vibrateLevelComplete()
                                 ServiceLocator.progressRepository.saveProgress(
                                     levelNumber = levelNumber,
                                     stars = stars,
@@ -908,7 +974,9 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
                                 )
                             } else {
                                 sound.playGameOver()
+                                haptic.vibrateGameOver()
                             }
+                            saveStatistics()
                             _uiState.update {
                                 it.copy(phase = endPhase, stars = stars)
                             }
@@ -1088,5 +1156,9 @@ data class GameUiState(
     /** Whether bonus moves are currently being performed (auto-destroying gems). */
     val bonusMoveActive: Boolean = false,
     /** How many bonus moves remain to be consumed. */
-    val bonusMovesRemaining: Int = 0
+    val bonusMovesRemaining: Int = 0,
+
+    // === Accessibility ===
+    /** Whether colorblind mode is enabled (draws shape overlays on gems). */
+    val colorblindMode: Boolean = false
 )

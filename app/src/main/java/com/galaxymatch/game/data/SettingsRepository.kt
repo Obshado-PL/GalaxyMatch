@@ -25,6 +25,12 @@ class SettingsRepository(private val dataStore: SettingsDataStore) {
     /** Save whether the tutorial has been seen. */
     suspend fun saveTutorialSeen(seen: Boolean) = dataStore.saveTutorialSeen(seen)
 
+    /** Save whether haptic feedback is muted. */
+    suspend fun saveHapticMuted(muted: Boolean) = dataStore.saveHapticMuted(muted)
+
+    /** Save whether colorblind mode is enabled. */
+    suspend fun saveColorblindMode(enabled: Boolean) = dataStore.saveColorblindMode(enabled)
+
     /** Clear all settings (reset to defaults). */
     suspend fun clearAll() = dataStore.clearAll()
 }

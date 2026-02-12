@@ -17,6 +17,7 @@ import com.galaxymatch.game.ui.levelmap.LevelMapScreen
 import com.galaxymatch.game.ui.results.ResultsScreen
 import com.galaxymatch.game.ui.settings.SettingsScreen
 import com.galaxymatch.game.ui.splash.SplashScreen
+import com.galaxymatch.game.ui.statistics.StatisticsScreen
 
 /** Duration for all screen transitions (300ms with smooth deceleration) */
 private const val NAV_ANIM_DURATION = 300
@@ -109,6 +110,18 @@ fun AppNavigation() {
                 },
                 onSettingsClicked = {
                     navController.navigate(SettingsRoute)
+                },
+                onStatsClicked = {
+                    navController.navigate(StatisticsRoute)
+                }
+            )
+        }
+
+        // ===== Statistics Screen =====
+        composable<StatisticsRoute> {
+            StatisticsScreen(
+                onBackToMap = {
+                    navController.popBackStack(LevelMapRoute, inclusive = false)
                 }
             )
         }
