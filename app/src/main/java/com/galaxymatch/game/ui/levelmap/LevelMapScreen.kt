@@ -58,31 +58,34 @@ fun LevelMapScreen(
                 .fillMaxSize()
                 .statusBarsPadding()
         ) {
-        // === Title Row with Settings Button ===
-        Box(
+        // === Title ===
+        Text(
+            text = "Select Level",
+            style = MaterialTheme.typography.headlineLarge.copy(
+                fontWeight = FontWeight.Bold
+            ),
+            color = Color.White,
+            textAlign = TextAlign.Center,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 24.dp, bottom = 16.dp, start = 16.dp, end = 16.dp)
+                .padding(top = 24.dp, bottom = 8.dp)
+        )
+
+        // === Icon buttons row (below title) ===
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // Title centered in the row
-            Text(
-                text = "Select Level",
-                style = MaterialTheme.typography.headlineLarge.copy(
-                    fontWeight = FontWeight.Bold
-                ),
-                color = Color.White,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth()
-            )
-            // Icon buttons on the right side
             Row(
-                modifier = Modifier.align(Alignment.CenterEnd),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 // Daily Challenge button
                 Box(
                     modifier = Modifier
-                        .size(40.dp)
+                        .size(44.dp)
                         .clip(CircleShape)
                         .background(Color.White.copy(alpha = 0.15f))
                         .bounceClick(onClick = onDailyChallengeClicked),
@@ -97,7 +100,7 @@ fun LevelMapScreen(
                 // Timed Challenge button
                 Box(
                     modifier = Modifier
-                        .size(40.dp)
+                        .size(44.dp)
                         .clip(CircleShape)
                         .background(Color.White.copy(alpha = 0.15f))
                         .bounceClick(onClick = onTimedChallengeClicked),
@@ -112,7 +115,7 @@ fun LevelMapScreen(
                 // Achievements button
                 Box(
                     modifier = Modifier
-                        .size(40.dp)
+                        .size(44.dp)
                         .clip(CircleShape)
                         .background(Color.White.copy(alpha = 0.15f))
                         .bounceClick(onClick = onAchievementsClicked),
@@ -127,7 +130,7 @@ fun LevelMapScreen(
                 // Stats button
                 Box(
                     modifier = Modifier
-                        .size(40.dp)
+                        .size(44.dp)
                         .clip(CircleShape)
                         .background(Color.White.copy(alpha = 0.15f))
                         .bounceClick(onClick = onStatsClicked),
@@ -142,7 +145,7 @@ fun LevelMapScreen(
                 // Gear/settings button
                 Box(
                     modifier = Modifier
-                        .size(40.dp)
+                        .size(44.dp)
                         .clip(CircleShape)
                         .background(Color.White.copy(alpha = 0.15f))
                         .bounceClick(onClick = onSettingsClicked),

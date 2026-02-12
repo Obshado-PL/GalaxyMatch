@@ -19,6 +19,7 @@ import com.galaxymatch.game.model.GemType
 import com.galaxymatch.game.model.LevelConfig
 import com.galaxymatch.game.model.ObjectiveType
 import com.galaxymatch.game.model.ObstacleType
+import com.galaxymatch.game.model.TimedDifficulty
 
 /**
  * Pre-level dialog shown before each level starts.
@@ -43,6 +44,12 @@ fun PreLevelDialog(
     levelConfig: LevelConfig,
     onPlay: () -> Unit
 ) {
+    // === Detect special modes from sentinel level numbers ===
+    val isDailyChallenge = levelNumber == -1
+    val isTimedMode = levelNumber <= -100
+    val timedDifficulty: TimedDifficulty? =
+        if (isTimedMode) TimedDifficulty.entries.getOrNull(-(levelNumber + 100)) else null
+
     // Full-screen semi-transparent scrim (same as TutorialOverlay)
     Box(
         modifier = Modifier
@@ -62,9 +69,18 @@ fun PreLevelDialog(
                 )
                 .padding(28.dp)
         ) {
-            // === Level number title ===
+            // === Title ===
+            // Show appropriate title for each mode:
+            // - Timed: "Timed Challenge" with difficulty
+            // - Daily: "Daily Challenge"
+            // - Normal: "Level #"
+            val titleText = when {
+                isTimedMode -> "\u23F1 Timed Challenge"
+                isDailyChallenge -> "\uD83D\uDCC5 Daily Challenge"
+                else -> "Level $levelNumber"
+            }
             Text(
-                text = "Level $levelNumber",
+                text = titleText,
                 style = MaterialTheme.typography.displaySmall.copy(
                     fontWeight = FontWeight.ExtraBold
                 ),
@@ -75,9 +91,12 @@ fun PreLevelDialog(
             Spacer(modifier = Modifier.height(4.dp))
 
             // === Objective description ===
-            // Build a clear description of what the player needs to do.
-            // Each objective type gets its own emoji and phrasing.
-            val objectiveText = buildObjectiveText(levelConfig)
+            // Timed mode: explain the time-based scoring
+            // Normal/Daily: standard objective text
+            val objectiveText = when {
+                isTimedMode -> "\u26A1 Score as many points as you can before time runs out!"
+                else -> buildObjectiveText(levelConfig)
+            }
             Text(
                 text = objectiveText,
                 style = MaterialTheme.typography.titleMedium.copy(
@@ -104,55 +123,112 @@ fun PreLevelDialog(
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            // === Moves and target score info ===
-            // Shows practical info: how many moves and the score target.
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(24.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .background(
-                        color = Color.White.copy(alpha = 0.08f),
-                        shape = RoundedCornerShape(12.dp)
-                    )
-                    .padding(horizontal = 20.dp, vertical = 10.dp)
-            ) {
-                // Moves count
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            // === Mode-specific info ===
+            if (isTimedMode && timedDifficulty != null) {
+                // Timed mode: show difficulty and time instead of moves/target
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(24.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .background(
+                            color = Color.White.copy(alpha = 0.08f),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        .padding(horizontal = 20.dp, vertical = 10.dp)
+                ) {
+                    // Difficulty label
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = timedDifficulty.label,
+                            style = MaterialTheme.typography.headlineSmall.copy(
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = when (timedDifficulty) {
+                                TimedDifficulty.Easy -> Color(0xFF44DD44)
+                                TimedDifficulty.Medium -> Color(0xFFFFAA33)
+                                TimedDifficulty.Hard -> Color(0xFFFF4444)
+                            }
+                        )
+                        Text(
+                            text = "Difficulty",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White.copy(alpha = 0.6f)
+                        )
+                    }
+
+                    // Divider dot
                     Text(
-                        text = "${levelConfig.maxMoves}",
-                        style = MaterialTheme.typography.headlineSmall.copy(
-                            fontWeight = FontWeight.Bold
-                        ),
-                        color = Color.White
+                        text = "·",
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = Color.White.copy(alpha = 0.3f)
                     )
-                    Text(
-                        text = "Moves",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.White.copy(alpha = 0.6f)
-                    )
+
+                    // Time
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "${timedDifficulty.seconds}s",
+                            style = MaterialTheme.typography.headlineSmall.copy(
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = Color(0xFFFFD700) // Gold
+                        )
+                        Text(
+                            text = "Time",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White.copy(alpha = 0.6f)
+                        )
+                    }
                 }
+            } else {
+                // Normal/Daily mode: show moves and target score
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(24.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .background(
+                            color = Color.White.copy(alpha = 0.08f),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        .padding(horizontal = 20.dp, vertical = 10.dp)
+                ) {
+                    // Moves count
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "${levelConfig.maxMoves}",
+                            style = MaterialTheme.typography.headlineSmall.copy(
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = Color.White
+                        )
+                        Text(
+                            text = "Moves",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White.copy(alpha = 0.6f)
+                        )
+                    }
 
-                // Divider dot
-                Text(
-                    text = "·",
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = Color.White.copy(alpha = 0.3f)
-                )
+                    // Divider dot
+                    Text(
+                        text = "·",
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = Color.White.copy(alpha = 0.3f)
+                    )
 
-                // Target score (for star rating)
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "${levelConfig.targetScore}",
-                        style = MaterialTheme.typography.headlineSmall.copy(
-                            fontWeight = FontWeight.Bold
-                        ),
-                        color = Color(0xFFFFD700) // Gold
-                    )
-                    Text(
-                        text = "Target",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.White.copy(alpha = 0.6f)
-                    )
+                    // Target score (for star rating)
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "${levelConfig.targetScore}",
+                            style = MaterialTheme.typography.headlineSmall.copy(
+                                fontWeight = FontWeight.Bold
+                            ),
+                            color = Color(0xFFFFD700) // Gold
+                        )
+                        Text(
+                            text = "Target",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color.White.copy(alpha = 0.6f)
+                        )
+                    }
                 }
             }
 

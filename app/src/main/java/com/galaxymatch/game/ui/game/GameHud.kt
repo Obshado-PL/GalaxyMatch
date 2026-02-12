@@ -79,8 +79,12 @@ fun GameHud(
     targetGemCount: Int = 0,
     targetGemType: GemType? = null,
     objectiveComplete: Boolean = false,
+    isTimedMode: Boolean = false,
+    timeRemaining: Int = 0,
     modifier: Modifier = Modifier
 ) {
+    // === Detect special modes from sentinel level numbers ===
+    val isDailyChallenge = levelNumber == -1
     // Animate the displayed score so it smoothly counts up to the actual score
     // rather than jumping instantly. Gives a satisfying "rolling numbers" feel.
     val animatedScore by animateIntAsState(
@@ -100,9 +104,23 @@ fun GameHud(
         verticalAlignment = Alignment.CenterVertically
     ) {
         // === Level indicator ===
+        // Show appropriate label for each mode:
+        // - Timed: "TIMED" with a timer icon
+        // - Daily: "DAILY"
+        // - Normal: "LEVEL" with the number
+        val levelLabel = when {
+            isTimedMode -> "TIMED"
+            isDailyChallenge -> "DAILY"
+            else -> "LEVEL"
+        }
+        val levelValue = when {
+            isTimedMode -> "\u23F1" // Stopwatch emoji
+            isDailyChallenge -> "\uD83D\uDCC5" // Calendar emoji
+            else -> levelNumber.toString()
+        }
         HudItem(
-            label = "LEVEL",
-            value = levelNumber.toString(),
+            label = levelLabel,
+            value = levelValue,
             modifier = Modifier.weight(1f)
         )
 
@@ -128,11 +146,12 @@ fun GameHud(
                 color = StarGold
             )
             // Show objective-aware target display
+            // Timed mode: no target display (just score as high as possible)
             // Each objective type gets its own indicator:
             // - ReachScore: "Target: 4000" (classic, unchanged)
             // - BreakAllIce: "🧊 Ice: 2/4" (light blue, turns gold when complete)
             // - ClearGemType: "🔴 Red: 15/25" (gem's color, turns gold when complete)
-            if (levelConfig != null) {
+            if (levelConfig != null && !isTimedMode) {
                 when (objectiveType) {
                     is ObjectiveType.BreakAllIce -> {
                         val objectiveColor = if (objectiveComplete) StarGold
@@ -253,13 +272,20 @@ fun GameHud(
                         cornerRadius = CornerRadius(4f, 4f)
                     )
                 }
+            } else if (isTimedMode) {
+                // Timed mode: show a "High score" subtitle instead of target
+                Text(
+                    text = "Score as high as you can!",
+                    style = MaterialTheme.typography.bodyLarge.copy(fontSize = 11.sp),
+                    color = Color.White.copy(alpha = 0.5f)
+                )
             }
         }
 
-        // === Moves remaining (with urgency pulse when low) ===
-        // When 5 or fewer moves remain, the number gently pulses
-        // to create a sense of urgency without being distracting.
-        val isLowMoves = movesRemaining <= 5
+        // === Moves or Timer (with urgency pulse when low) ===
+        // Timed mode: shows countdown timer instead of moves count.
+        // Both modes pulse when running low to create urgency.
+        val isLowMoves = if (isTimedMode) timeRemaining <= 10 else movesRemaining <= 5
         val movesColor = if (isLowMoves) Color(0xFFFF6666) else Color.White
 
         val movesPulseTransition = rememberInfiniteTransition(label = "movesPulse")
@@ -272,32 +298,58 @@ fun GameHud(
             ),
             label = "movesPulseValue"
         )
-        // Only apply the pulse scale when moves are low
+        // Only apply the pulse scale when running low
         val movesPulseScale = if (isLowMoves) 1f + 0.06f * movesPulseProgress else 1f
 
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.weight(1f)
         ) {
-            Text(
-                text = "MOVES",
-                style = MaterialTheme.typography.bodyLarge.copy(
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 2.sp
-                ),
-                color = Color.White.copy(alpha = 0.7f),
-                textAlign = TextAlign.Center
-            )
-            Text(
-                text = movesRemaining.toString(),
-                style = MaterialTheme.typography.headlineMedium.copy(
-                    fontWeight = FontWeight.Bold
-                ),
-                color = movesColor,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.scale(movesPulseScale)
-            )
+            if (isTimedMode) {
+                // Timed mode: show countdown timer
+                Text(
+                    text = "TIME",
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 2.sp
+                    ),
+                    color = Color.White.copy(alpha = 0.7f),
+                    textAlign = TextAlign.Center
+                )
+                val minutes = timeRemaining / 60
+                val seconds = timeRemaining % 60
+                Text(
+                    text = "%d:%02d".format(minutes, seconds),
+                    style = MaterialTheme.typography.headlineMedium.copy(
+                        fontWeight = FontWeight.Bold
+                    ),
+                    color = movesColor,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.scale(movesPulseScale)
+                )
+            } else {
+                // Normal mode: show moves remaining
+                Text(
+                    text = "MOVES",
+                    style = MaterialTheme.typography.bodyLarge.copy(
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 2.sp
+                    ),
+                    color = Color.White.copy(alpha = 0.7f),
+                    textAlign = TextAlign.Center
+                )
+                Text(
+                    text = movesRemaining.toString(),
+                    style = MaterialTheme.typography.headlineMedium.copy(
+                        fontWeight = FontWeight.Bold
+                    ),
+                    color = movesColor,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.scale(movesPulseScale)
+                )
+            }
         }
     }
 

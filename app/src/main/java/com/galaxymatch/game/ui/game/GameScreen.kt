@@ -140,7 +140,9 @@ fun GameScreen(
                 gemsCleared = state.gemsCleared,
                 targetGemCount = state.targetGemCount,
                 targetGemType = state.targetGemType,
-                objectiveComplete = state.objectiveComplete
+                objectiveComplete = state.objectiveComplete,
+                isTimedMode = state.isTimedMode,
+                timeRemaining = state.timeRemaining
             )
 
             Spacer(modifier = Modifier.height(4.dp))
