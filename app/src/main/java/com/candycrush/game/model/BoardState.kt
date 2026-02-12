@@ -7,14 +7,21 @@ package com.candycrush.game.model
  * A null entry means the cell is currently empty (this happens temporarily
  * during the cascade phase, after matches are cleared but before gravity fills gaps).
  *
+ * Obstacles are stored separately from the candy grid as an immutable map.
+ * This keeps the grid simple (Candy? only) while supporting ice and stone tiles.
+ * - Stone positions have grid[row][col] = null (no candy can exist there)
+ * - Ice positions have a normal candy in the grid (ice is just an overlay)
+ *
  * @param rows Number of rows in the grid (typically 7-9)
  * @param cols Number of columns in the grid (typically 7-9)
  * @param grid The 2D array of candies. grid[row][col] gives the candy at that position.
+ * @param obstacles Map of obstacle positions and their types. Empty map = no obstacles.
  */
 data class BoardState(
     val rows: Int,
     val cols: Int,
-    val grid: Array<Array<Candy?>>
+    val grid: Array<Array<Candy?>>,
+    val obstacles: Map<Position, ObstacleType> = emptyMap()
 ) {
     /**
      * Get the candy at a specific position.
@@ -53,10 +60,29 @@ data class BoardState(
         grid[pos2.row][pos2.col] = temp
     }
 
+    // ===== Obstacle Helpers =====
+
+    /**
+     * Check if a position has any obstacle (ice or stone).
+     */
+    fun hasObstacle(pos: Position): Boolean = pos in obstacles
+
+    /**
+     * Get the obstacle type at a position, or null if no obstacle.
+     */
+    fun getObstacle(pos: Position): ObstacleType? = obstacles[pos]
+
+    /**
+     * Check if a position is a stone wall.
+     * Stones are permanent — no candy, no swap, gravity flows around them.
+     */
+    fun isStone(pos: Position): Boolean = obstacles[pos] == ObstacleType.Stone
+
     /**
      * Create a deep copy of this board state.
      * This is important because we sometimes need to test a swap without
      * modifying the real board (e.g., checking if a move is valid).
+     * The obstacles map is immutable so it can be shared safely.
      */
     fun deepCopy(): BoardState {
         val newGrid = Array(rows) { row ->
@@ -64,7 +90,8 @@ data class BoardState(
                 grid[row][col]?.copy()
             }
         }
-        return BoardState(rows, cols, newGrid)
+        // Obstacles map is immutable — safe to share without copying
+        return BoardState(rows, cols, newGrid, obstacles)
     }
 
     /**
@@ -85,6 +112,7 @@ data class BoardState(
         if (this === other) return true
         if (other !is BoardState) return false
         if (rows != other.rows || cols != other.cols) return false
+        if (obstacles != other.obstacles) return false
         for (r in 0 until rows) {
             for (c in 0 until cols) {
                 if (grid[r][c] != other.grid[r][c]) return false
@@ -96,6 +124,7 @@ data class BoardState(
     override fun hashCode(): Int {
         var result = rows
         result = 31 * result + cols
+        result = 31 * result + obstacles.hashCode()
         for (r in 0 until rows) {
             for (c in 0 until cols) {
                 result = 31 * result + (grid[r][c]?.hashCode() ?: 0)
@@ -106,7 +135,7 @@ data class BoardState(
 
     companion object {
         /**
-         * Create an empty board with all null cells.
+         * Create an empty board with all null cells and no obstacles.
          */
         fun empty(rows: Int, cols: Int): BoardState {
             return BoardState(rows, cols, Array(rows) { arrayOfNulls(cols) })

@@ -33,6 +33,11 @@ enum class GamePhase {
     /** The board has settled after a cascade. Transitioning back to Idle. */
     Settled,
 
+    /** Bonus moves phase: consuming remaining moves after non-score objective completion.
+     *  Each remaining move auto-destroys a random candy for bonus points —
+     *  the classic "level complete fireworks" reward for finishing early. */
+    BonusMoves,
+
     /** The player ran out of moves without reaching the target score. */
     GameOver,
 

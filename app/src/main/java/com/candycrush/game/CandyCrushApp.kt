@@ -6,6 +6,8 @@ import com.candycrush.game.data.LevelDataSource
 import com.candycrush.game.data.LevelRepository
 import com.candycrush.game.data.ProgressDataStore
 import com.candycrush.game.data.ProgressRepository
+import com.candycrush.game.data.SettingsDataStore
+import com.candycrush.game.data.SettingsRepository
 
 /**
  * Application class for Candy Crush Game.
@@ -40,10 +42,13 @@ object ServiceLocator {
         private set
     lateinit var soundManager: SoundManager
         private set
+    lateinit var settingsRepository: SettingsRepository
+        private set
 
     fun initialize(context: Application) {
         levelRepository = LevelRepository(LevelDataSource)
         progressRepository = ProgressRepository(ProgressDataStore(context))
         soundManager = SoundManager(context)
+        settingsRepository = SettingsRepository(SettingsDataStore(context))
     }
 }

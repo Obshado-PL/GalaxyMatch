@@ -28,4 +28,23 @@ class ProgressRepository(private val dataStore: ProgressDataStore) {
     fun getProgress(): Flow<PlayerProgress> {
         return dataStore.getProgress()
     }
+
+    /**
+     * Spend stars on a power-up.
+     *
+     * Deducts the given number of stars from the player's available balance.
+     * Call this AFTER verifying the player has enough stars (availableStars >= amount).
+     *
+     * @param amount Number of stars to spend
+     */
+    suspend fun spendStars(amount: Int) {
+        dataStore.spendStars(amount)
+    }
+
+    /**
+     * Clear all player progress (used by the "Reset Progress" setting).
+     */
+    suspend fun clearAllProgress() {
+        dataStore.clearAllProgress()
+    }
 }

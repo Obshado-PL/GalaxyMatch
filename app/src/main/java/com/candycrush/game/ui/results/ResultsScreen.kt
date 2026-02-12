@@ -1,19 +1,29 @@
 package com.candycrush.game.ui.results
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.candycrush.game.ui.components.GameButton
-import com.candycrush.game.ui.components.StarRating
+import com.candycrush.game.ui.components.drawStar
 import com.candycrush.game.ui.theme.GameBackground
+import com.candycrush.game.ui.theme.StarEmpty
+import com.candycrush.game.ui.theme.StarGold
+import kotlinx.coroutines.delay
 
 /**
  * Results screen shown after completing or failing a level.
@@ -28,6 +38,7 @@ import com.candycrush.game.ui.theme.GameBackground
  * @param score The final score
  * @param stars Stars earned (0-3)
  * @param won True if the player passed the level
+ * @param objectiveText Objective status text (e.g. "All ice broken!"). Empty = no objective display.
  * @param onPlayAgain Called to replay the same level
  * @param onNextLevel Called to play the next level
  * @param onBackToMap Called to return to the level map
@@ -38,6 +49,7 @@ fun ResultsScreen(
     score: Int,
     stars: Int,
     won: Boolean,
+    objectiveText: String = "",
     onPlayAgain: () -> Unit,
     onNextLevel: () -> Unit,
     onBackToMap: () -> Unit
@@ -71,11 +83,75 @@ fun ResultsScreen(
             color = Color.White.copy(alpha = 0.7f)
         )
 
+        // === Objective status text ===
+        // Shows what the objective was and whether it was completed.
+        // Green for success, red for failure. Only shown for non-score objectives.
+        if (objectiveText.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = objectiveText,
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    fontWeight = FontWeight.SemiBold
+                ),
+                color = if (won) Color(0xFF44DD44) else Color(0xFFFF8888),
+                textAlign = TextAlign.Center
+            )
+        }
+
         Spacer(modifier = Modifier.height(24.dp))
 
-        // === Star Rating ===
+        // === Star Rating with staggered bounce-in ===
+        // Each earned star bounces in one-by-one with a 200ms delay,
+        // creating a satisfying reveal sequence.
         if (won && stars > 0) {
-            StarRating(stars = stars, starSize = 48.dp)
+            val star1Scale = remember { Animatable(0f) }
+            val star2Scale = remember { Animatable(0f) }
+            val star3Scale = remember { Animatable(0f) }
+            val starAnims = listOf(star1Scale, star2Scale, star3Scale)
+
+            // Animate earned stars sequentially with staggered delays
+            LaunchedEffect(Unit) {
+                for (i in 0 until stars) {
+                    delay(200L) // Stagger: each star starts 200ms after the previous
+                    starAnims[i].animateTo(
+                        targetValue = 1f,
+                        animationSpec = tween(
+                            durationMillis = 400,
+                            easing = FastOutSlowInEasing
+                        )
+                    )
+                }
+            }
+
+            Row {
+                for (i in 0 until 3) {
+                    val isEarned = i < stars
+                    // Overshoot: scale up to 1.3x then settle to 1.0x
+                    val rawScale = starAnims[i].value
+                    val displayScale = if (isEarned && rawScale < 1f) {
+                        // During animation: overshoot to 1.3x at peak
+                        val overshoot = 1.3f
+                        if (rawScale < 0.5f) {
+                            rawScale * 2f * overshoot
+                        } else {
+                            overshoot - (rawScale - 0.5f) * 2f * (overshoot - 1f)
+                        }
+                    } else if (isEarned) {
+                        1f // Animation complete
+                    } else {
+                        1f // Unearned stars shown at normal size (empty)
+                    }
+
+                    Canvas(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .scale(displayScale)
+                    ) {
+                        val color = if (isEarned && rawScale > 0f) StarGold else StarEmpty
+                        drawStar(color, center, size.minDimension / 2f)
+                    }
+                }
+            }
             Spacer(modifier = Modifier.height(16.dp))
         }
 

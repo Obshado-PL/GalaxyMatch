@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import com.candycrush.game.ServiceLocator
 import com.candycrush.game.ui.theme.GameBackground
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 
 /**
  * Splash screen shown when the app first launches.
@@ -44,8 +45,16 @@ fun SplashScreen(onSplashComplete: () -> Unit) {
                 easing = FastOutSlowInEasing
             )
         )
-        // Start background music after the animation finishes
-        ServiceLocator.soundManager.startBackgroundMusic()
+        // Load saved sound settings before starting music
+        // so the player's mute preferences are respected on app launch
+        val settings = ServiceLocator.settingsRepository.getSettings().first()
+        ServiceLocator.soundManager.isSfxMuted = settings.sfxMuted
+        ServiceLocator.soundManager.isMusicMuted = settings.musicMuted
+
+        // Start background music (SoundManager will respect the mute flag)
+        if (!settings.musicMuted) {
+            ServiceLocator.soundManager.startBackgroundMusic()
+        }
 
         // Hold for a moment
         delay(600)

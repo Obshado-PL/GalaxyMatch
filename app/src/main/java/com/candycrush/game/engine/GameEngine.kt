@@ -1,6 +1,7 @@
 package com.candycrush.game.engine
 
 import com.candycrush.game.model.*
+import com.candycrush.game.model.ObstacleType
 
 /**
  * The core game engine that orchestrates all game logic.
@@ -39,6 +40,9 @@ class GameEngine(private val levelConfig: LevelConfig) {
     private val gravityProcessor = GravityProcessor()
     val shuffleChecker = ShuffleChecker(matchDetector)
     private val scoreCalculator = ScoreCalculator()
+
+    /** Tracks progress toward the level's objective (ice broken, candies cleared, etc.) */
+    val objectiveTracker = ObjectiveTracker(levelConfig.objective, levelConfig)
 
     // The candy types available for this level
     private val availableTypes = CandyType.forLevel(levelConfig.availableCandyTypes)
@@ -82,6 +86,16 @@ class GameEngine(private val levelConfig: LevelConfig) {
 
         for (row in 0 until levelConfig.rows) {
             for (col in 0 until levelConfig.cols) {
+                val pos = Position(row, col)
+
+                // === Obstacle handling ===
+                // Stone positions stay null (no candy can exist here).
+                // Ice positions get a normal candy — ice is just an overlay.
+                if (levelConfig.obstacles[pos] == ObstacleType.Stone) {
+                    grid[row][col] = null
+                    continue
+                }
+
                 val excludedTypes = mutableSetOf<CandyType>()
 
                 // Check horizontal: if the two cells to the left have the same type,
@@ -116,11 +130,13 @@ class GameEngine(private val levelConfig: LevelConfig) {
             }
         }
 
-        board = BoardState(levelConfig.rows, levelConfig.cols, grid)
+        // Copy obstacles from level config into the board state
+        board = BoardState(levelConfig.rows, levelConfig.cols, grid, levelConfig.obstacles)
         score = 0
         movesRemaining = levelConfig.maxMoves
         comboCount = 0
         phase = GamePhase.Idle
+        objectiveTracker.reset()
 
         return board
     }
@@ -186,6 +202,9 @@ class GameEngine(private val levelConfig: LevelConfig) {
         movesRemaining--
         comboCount = 0
 
+        // === Track clears for objectives (before removing candies from the grid) ===
+        objectiveTracker.recordSpecialClears(comboPositions, board)
+
         // Clear all positions from the combo
         for (pos in comboPositions) {
             board.setCandy(pos, null)
@@ -224,6 +243,11 @@ class GameEngine(private val levelConfig: LevelConfig) {
         // Calculate score for these matches
         val scoreGained = scoreCalculator.calculateTotalScore(matches, comboCount)
         score += scoreGained
+
+        // === Track candies cleared for ClearCandyType objective ===
+        // Must be called before candies are removed from the grid.
+        // MatchResult already contains candyType, so this works even after removal.
+        objectiveTracker.recordCandiesCleared(matches)
 
         // Track all positions to clear (from matches + special effects)
         val positionsToClear = mutableSetOf<Position>()
@@ -267,6 +291,22 @@ class GameEngine(private val levelConfig: LevelConfig) {
         }
         positionsToClear.addAll(additionalClears)
 
+        // === Break ice at cleared positions ===
+        // When a candy at an ice position is matched, the ice breaks.
+        // We track removed obstacles to update the board state.
+        var updatedObstacles = board.obstacles
+        var iceBrokenThisStep = 0
+        for (pos in positionsToClear) {
+            if (board.getObstacle(pos) == ObstacleType.Ice) {
+                updatedObstacles = updatedObstacles - pos
+                iceBrokenThisStep++
+            }
+        }
+        // Track ice broken for BreakAllIce objective
+        if (iceBrokenThisStep > 0) {
+            objectiveTracker.recordIceBroken(iceBrokenThisStep)
+        }
+
         // Clear all matched/affected positions
         for (pos in positionsToClear) {
             board.setCandy(pos, null)
@@ -278,6 +318,11 @@ class GameEngine(private val levelConfig: LevelConfig) {
             if (board.candyAt(creation.position) == null) {
                 board.setCandy(creation.position, creation.candy)
             }
+        }
+
+        // Update board with broken ice removed (if any changed)
+        if (updatedObstacles !== board.obstacles) {
+            board = BoardState(board.rows, board.cols, board.grid, updatedObstacles)
         }
 
         // Apply gravity — candies fall down, new ones fill from top
@@ -311,16 +356,39 @@ class GameEngine(private val levelConfig: LevelConfig) {
     /**
      * Evaluate the end condition after the cascade settles.
      *
-     * @return The new game phase:
-     *   - LevelComplete if score >= target
-     *   - GameOver if moves == 0 and score < target
-     *   - Idle if the player still has moves
+     * The win condition depends on the level's objective type:
+     * - ReachScore: score >= targetScore (classic behavior)
+     * - BreakAllIce: all ice blocks broken → win immediately
+     * - ClearCandyType: enough target-color candies cleared → win immediately
+     *
+     * For ReachScore, the player can keep playing for more stars after meeting
+     * the target. For BreakAllIce/ClearCandyType, the level completes right away.
+     *
+     * Lose condition (same for all): out of moves AND objective not met.
+     *
+     * @return The new game phase
      */
     fun evaluateEndCondition(): GamePhase {
+        val objectiveMet = objectiveTracker.isObjectiveMet(score, board.obstacles)
+
         phase = when {
-            score >= levelConfig.targetScore && movesRemaining <= 0 -> GamePhase.LevelComplete
-            score >= levelConfig.targetScore -> GamePhase.Idle // Still has moves, can keep playing for more stars
+            // Non-score objectives met WITH remaining moves → bonus moves!
+            // Each leftover move auto-destroys a random candy for bonus points.
+            objectiveMet && levelConfig.objective !is ObjectiveType.ReachScore
+                && movesRemaining > 0 -> {
+                GamePhase.BonusMoves
+            }
+            // Non-score objectives met with NO remaining moves → straight to complete
+            objectiveMet && levelConfig.objective !is ObjectiveType.ReachScore -> {
+                GamePhase.LevelComplete
+            }
+            // Score objective: met + no moves left → complete
+            objectiveMet && movesRemaining <= 0 -> GamePhase.LevelComplete
+            // Score objective: met but still has moves → keep playing for stars
+            objectiveMet -> GamePhase.Idle
+            // Out of moves and objective not met → game over
             movesRemaining <= 0 -> GamePhase.GameOver
+            // Still has moves, keep playing
             else -> GamePhase.Idle
         }
         return phase
@@ -331,12 +399,301 @@ class GameEngine(private val levelConfig: LevelConfig) {
      * or when last move was used).
      */
     fun checkLevelComplete(): GamePhase {
-        if (score >= levelConfig.targetScore) {
+        val objectiveMet = objectiveTracker.isObjectiveMet(score, board.obstacles)
+        if (objectiveMet) {
             phase = GamePhase.LevelComplete
         } else if (movesRemaining <= 0) {
             phase = GamePhase.GameOver
         }
         return phase
+    }
+
+    /**
+     * Restore the engine to a previously saved state (for Undo).
+     *
+     * This resets the board, score, moves, and objective counters to snapshot values.
+     * The engine returns to Idle phase so the player can make another move.
+     * Called from the ViewModel when the player taps the Undo button.
+     *
+     * @param savedBoard A deep copy of the board before the undone move
+     * @param savedScore The score before the undone move
+     * @param savedMoves The moves remaining before the undone move
+     * @param savedIceBroken Ice broken count before the undone move
+     * @param savedCandiesCleared Candies cleared count before the undone move
+     */
+    fun restoreState(
+        savedBoard: BoardState,
+        savedScore: Int,
+        savedMoves: Int,
+        savedIceBroken: Int = 0,
+        savedCandiesCleared: Int = 0
+    ) {
+        board = savedBoard
+        score = savedScore
+        movesRemaining = savedMoves
+        comboCount = 0
+        phase = GamePhase.Idle
+        lastMatches = emptyList()
+        lastGravityResult = null
+        lastSpecialActivations = emptySet()
+        objectiveTracker.restoreCounters(savedIceBroken, savedCandiesCleared)
+    }
+
+    // ===== Power-Up Methods =====
+    // Power-ups are bonus actions that don't cost a move.
+    // They can only be used when the board is idle (no animations running).
+
+    /**
+     * Use the Hammer power-up: destroy a single candy at the given position.
+     *
+     * The candy is removed from the board, which triggers gravity (candies above
+     * fall down, new candies fill from the top). After gravity, the cascade loop
+     * may find new matches — just like after a normal swap.
+     *
+     * @param position The board position of the candy to destroy
+     * @return True if the candy was successfully destroyed, false if invalid
+     */
+    fun useHammer(position: Position): Boolean {
+        if (phase != GamePhase.Idle) return false
+        if (!board.isInBounds(position)) return false
+
+        // Hammer on stone does nothing — stones are indestructible
+        if (board.isStone(position)) return false
+
+        val candy = board.candyAt(position) ?: return false
+
+        // === Track this candy clear for ClearCandyType objective ===
+        // Must be done before the candy is removed from the board
+        objectiveTracker.recordSpecialClears(setOf(position), board)
+
+        // If the candy is a special, activate its effect first (bonus!)
+        if (candy.special != SpecialType.None) {
+            val effectPositions = specialEffects.activate(candy, position, board)
+            // Track special effect clears for objectives too
+            objectiveTracker.recordSpecialClears(effectPositions, board)
+            for (pos in effectPositions) {
+                board.setCandy(pos, null)
+            }
+            lastSpecialActivations = effectPositions
+        }
+
+        // Remove the candy
+        board.setCandy(position, null)
+
+        // If this position had ice, break it
+        var updatedObstacles = board.obstacles
+        if (board.getObstacle(position) == ObstacleType.Ice) {
+            updatedObstacles = updatedObstacles - position
+            board = BoardState(board.rows, board.cols, board.grid, updatedObstacles)
+            // Track ice broken for BreakAllIce objective
+            objectiveTracker.recordIceBroken(1)
+        }
+
+        // Apply gravity — candies fall down, new ones fill from top
+        val gravityResult = gravityProcessor.applyGravity(board, availableTypes)
+        lastGravityResult = gravityResult
+
+        // Check if gravity created any new matches
+        val newMatches = matchDetector.findAllMatches(board)
+        if (newMatches.isNotEmpty()) {
+            comboCount = 0
+            lastMatches = newMatches
+            phase = GamePhase.Cascading
+        } else {
+            lastMatches = emptyList()
+            phase = GamePhase.Settled
+        }
+
+        return true
+    }
+
+    /**
+     * Use the Color Bomb power-up: remove ALL candies of the same color
+     * as the candy at the given position.
+     *
+     * This is similar to the ColorBomb special candy effect, but triggered
+     * by a power-up instead of a match. All candies of the target color are
+     * cleared, gravity fills the gaps, and the cascade loop checks for new matches.
+     *
+     * @param position The board position — its candy's color determines which color to clear
+     * @return True if candies were successfully cleared, false if invalid
+     */
+    fun useColorBomb(position: Position): Boolean {
+        if (phase != GamePhase.Idle) return false
+        if (!board.isInBounds(position)) return false
+        val candy = board.candyAt(position) ?: return false
+
+        val targetType = candy.type
+        val clearedPositions = mutableSetOf<Position>()
+
+        // Find and clear ALL candies of this color on the board
+        for (row in 0 until board.rows) {
+            for (col in 0 until board.cols) {
+                val pos = Position(row, col)
+                val c = board.candyAt(pos)
+                if (c != null && c.type == targetType) {
+                    // If this candy is a special, activate its effect too (chain reaction!)
+                    if (c.special != SpecialType.None) {
+                        val effectPositions = specialEffects.activate(c, pos, board)
+                        clearedPositions.addAll(effectPositions)
+                    }
+                    clearedPositions.add(pos)
+                }
+            }
+        }
+
+        // === Track clears for objectives (before removing candies) ===
+        objectiveTracker.recordSpecialClears(clearedPositions, board)
+
+        // === Break ice at cleared positions & track for objectives ===
+        var updatedObstacles = board.obstacles
+        var iceBrokenByBomb = 0
+        for (pos in clearedPositions) {
+            if (board.getObstacle(pos) == ObstacleType.Ice) {
+                updatedObstacles = updatedObstacles - pos
+                iceBrokenByBomb++
+            }
+        }
+        if (iceBrokenByBomb > 0) {
+            objectiveTracker.recordIceBroken(iceBrokenByBomb)
+        }
+
+        // Clear all affected positions
+        for (pos in clearedPositions) {
+            board.setCandy(pos, null)
+        }
+
+        // Update board with broken ice removed (if any)
+        if (updatedObstacles !== board.obstacles) {
+            board = BoardState(board.rows, board.cols, board.grid, updatedObstacles)
+        }
+
+        // Score based on candies cleared (same rate as special combo)
+        score += clearedPositions.size * 60
+
+        lastSpecialActivations = clearedPositions
+
+        // Apply gravity
+        val gravityResult = gravityProcessor.applyGravity(board, availableTypes)
+        lastGravityResult = gravityResult
+
+        // Check for new matches from the cascade
+        val newMatches = matchDetector.findAllMatches(board)
+        if (newMatches.isNotEmpty()) {
+            comboCount = 0
+            lastMatches = newMatches
+            phase = GamePhase.Cascading
+        } else {
+            lastMatches = emptyList()
+            phase = GamePhase.Settled
+        }
+
+        return true
+    }
+
+    /**
+     * Use the Extra Moves power-up: add 5 extra moves to the current level.
+     *
+     * This is the simplest power-up — just increases movesRemaining by 5.
+     * Can even be used when the player has 0 moves left (if the game
+     * hasn't ended yet, i.e. they're still in idle phase).
+     *
+     * @return True if extra moves were added, false if the game isn't in idle phase
+     */
+    fun useExtraMoves(): Boolean {
+        if (phase != GamePhase.Idle) return false
+        movesRemaining += 5
+        return true
+    }
+
+    // ===== Bonus Moves =====
+    // When a non-score objective (BreakAllIce, ClearCandyType) is completed
+    // with remaining moves, each leftover move auto-destroys a random candy
+    // for bonus points — the classic "reward for finishing early" moment.
+
+    /**
+     * Perform one bonus move: randomly destroy a candy and trigger cascades.
+     *
+     * Picks a random non-null, non-stone candy position, destroys it
+     * (activating special effects if applicable), applies gravity, and
+     * checks for new matches. The ViewModel animates each step.
+     *
+     * @return True if a bonus move was performed, false if no candies or moves remain
+     */
+    fun performBonusMove(): Boolean {
+        if (movesRemaining <= 0) return false
+
+        // Collect all non-null candy positions (skip stones — they're indestructible)
+        val availablePositions = mutableListOf<Position>()
+        for (row in 0 until board.rows) {
+            for (col in 0 until board.cols) {
+                val pos = Position(row, col)
+                if (!board.isStone(pos) && board.candyAt(pos) != null) {
+                    availablePositions.add(pos)
+                }
+            }
+        }
+
+        if (availablePositions.isEmpty()) {
+            // Board is empty — abort remaining bonus moves
+            movesRemaining = 0
+            phase = GamePhase.LevelComplete
+            return false
+        }
+
+        // Pick a random candy to destroy
+        val targetPosition = availablePositions.random()
+        val candy = board.candyAt(targetPosition)!!
+
+        // Track this clear for objectives (consistency with power-ups)
+        objectiveTracker.recordSpecialClears(setOf(targetPosition), board)
+
+        // If the candy is a special, activate its effect (bonus fireworks!)
+        if (candy.special != SpecialType.None) {
+            val effectPositions = specialEffects.activate(candy, targetPosition, board)
+            objectiveTracker.recordSpecialClears(effectPositions, board)
+            for (pos in effectPositions) {
+                board.setCandy(pos, null)
+            }
+            lastSpecialActivations = effectPositions
+            // Bigger bonus for special candy activations
+            score += effectPositions.size * 80
+        } else {
+            lastSpecialActivations = emptySet()
+            // Small bonus for regular candy destruction
+            score += 50
+        }
+
+        // Remove the target candy
+        board.setCandy(targetPosition, null)
+
+        // Break ice if present at this position
+        if (board.getObstacle(targetPosition) == ObstacleType.Ice) {
+            val updatedObstacles = board.obstacles - targetPosition
+            board = BoardState(board.rows, board.cols, board.grid, updatedObstacles)
+            objectiveTracker.recordIceBroken(1)
+        }
+
+        // Consume one move
+        movesRemaining--
+
+        // Apply gravity — candies fall down, new ones fill from top
+        val gravityResult = gravityProcessor.applyGravity(board, availableTypes)
+        lastGravityResult = gravityResult
+
+        // Check if gravity created any new matches (cascade chain)
+        val newMatches = matchDetector.findAllMatches(board)
+        lastMatches = newMatches
+        if (newMatches.isNotEmpty()) {
+            comboCount = 0
+            phase = GamePhase.Cascading
+        } else {
+            // No cascades — stay in bonus moves or complete if done
+            phase = if (movesRemaining > 0) GamePhase.BonusMoves
+                else GamePhase.LevelComplete
+        }
+
+        return true
     }
 
     /**

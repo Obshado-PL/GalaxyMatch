@@ -13,7 +13,18 @@
       "Bash(cmd /c \"cd /d \"\"C:\\\\Users\\\\ssche\\\\OneDrive\\\\Máy tính\\\\Claude Code\\\\First project\"\" && gradlew.bat compileDebugKotlin 2>&1\")",
       "Bash(cmd /c \"cd /d \"\"C:\\\\Users\\\\ssche\\\\OneDrive\\\\Máy tính\\\\Claude Code\\\\First project\"\" && gradlew compileDebugKotlin\")",
       "Bash(git init:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nInitial commit: Match-3 Candy Crush game with animations and audio\n\nComplete Android Match-3 game built with Kotlin + Jetpack Compose featuring:\n- Pure-logic game engine \\(match detection, gravity, specials, cascading\\)\n- Canvas-based board rendering with smooth animations \\(swap, match/clear,\n  gravity fall, score popup, combo bounce, shuffle shake, overlay fade\\)\n- 20 levels with progressive difficulty\n- Sound effects \\(SoundPool\\) and gapless BGM looping \\(double-buffered MediaPlayer\\)\n- MVVM architecture with DataStore persistence\n- Level map, results screen, and splash screen\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git config:*)",
+      "Bash(./gradlew assembleDebug:*)",
+      "Bash(./gradlew tasks:*)",
+      "Bash(./gradlew:*)",
+      "Bash(cmd /c \"gradlew.bat :app:assembleDebug\")",
+      "Bash(ls:*)",
+      "Bash(bash gradlew:*)",
+      "Bash(GRADLE_OPTS=\"\" ./gradlew:*)",
+      "WebFetch(domain:jorgecastillo.dev)",
+      "Bash(.gradlew:*)"
     ]
   }
 }

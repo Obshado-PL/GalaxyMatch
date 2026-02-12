@@ -6,11 +6,14 @@ import com.candycrush.game.ServiceLocator
 import com.candycrush.game.engine.GameEngine
 import com.candycrush.game.engine.GravityProcessor
 import com.candycrush.game.model.*
+import com.candycrush.game.model.PowerUpType
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 /**
@@ -39,17 +42,57 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
     // ===== Sound Manager =====
     private val sound = ServiceLocator.soundManager
 
+    // ===== Hint System =====
+    /** Coroutine job for the idle hint timer. Cancelled on any player input. */
+    private var hintTimerJob: Job? = null
+
+    // ===== Undo System =====
+    /** Snapshot of the board/score/moves before the player's last valid swap. */
+    private var undoSnapshot: UndoSnapshot? = null
+
+    // ===== Settings Repository =====
+    private val settingsRepo = ServiceLocator.settingsRepository
+
     init {
-        startLevel(levelNumber)
+        loadLevelPreview(levelNumber)
+    }
+
+    /**
+     * Load level config and show the pre-level dialog.
+     *
+     * This is the first step of level initialization. It loads the level
+     * configuration (needed to display the objective in the dialog) but
+     * does NOT create the game engine or board yet. The board appears
+     * only after the player taps "Play!" in the pre-level dialog.
+     */
+    private fun loadLevelPreview(level: Int) {
+        val config = ServiceLocator.levelRepository.getLevel(level) ?: return
+        _uiState.value = GameUiState(
+            levelConfig = config,
+            levelNumber = level,
+            showPreLevelDialog = true  // Show dialog — board stays null
+        )
+    }
+
+    /**
+     * Dismiss the pre-level dialog and start the level.
+     * Called when the player taps "Play!" in the dialog.
+     */
+    fun dismissPreLevelDialog() {
+        _uiState.update { it.copy(showPreLevelDialog = false) }
+        startLevel(_uiState.value.levelNumber)
     }
 
     /**
      * Start (or restart) a level.
      */
-    fun startLevel(level: Int) {
+    private fun startLevel(level: Int) {
         val config = ServiceLocator.levelRepository.getLevel(level) ?: return
         engine = GameEngine(config)
         val board = engine.initializeBoard()
+
+        // Reset undo state for the new level
+        undoSnapshot = null
 
         _uiState.value = GameUiState(
             board = board,
@@ -57,8 +100,53 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
             movesRemaining = config.maxMoves,
             phase = GamePhase.Idle,
             levelConfig = config,
-            levelNumber = level
+            levelNumber = level,
+            boardEntryProgress = 0f,  // Start with candies above the board
+            // === Initialize objective tracking ===
+            objectiveType = config.objective,
+            iceBroken = 0,
+            totalIce = config.obstacles.count { it.value == ObstacleType.Ice },
+            candiesCleared = 0,
+            targetCandyCount = when (config.objective) {
+                is ObjectiveType.ClearCandyType -> config.objective.targetCount
+                else -> 0
+            },
+            targetCandyType = when (config.objective) {
+                is ObjectiveType.ClearCandyType -> config.objective.candyType
+                else -> null
+            },
+            objectiveComplete = false
         )
+
+        // Animate candies dropping in from above over 800ms
+        viewModelScope.launch {
+            animateProgress(durationMs = 800, steps = 24) { state, progress ->
+                state.copy(boardEntryProgress = progress)
+            }
+            // Snap to exactly 1f when done (ensure no floating-point imprecision)
+            _uiState.update { it.copy(boardEntryProgress = 1f) }
+        }
+
+        // Load the player's available stars for power-ups
+        viewModelScope.launch {
+            val progress = ServiceLocator.progressRepository.getProgress().first()
+            _uiState.update { it.copy(availableStars = progress.availableStars) }
+        }
+
+        // Start the hint timer — if the player is idle for 5 seconds,
+        // we'll highlight a valid move to help them out
+        startHintTimer()
+
+        // === Feature 4: Tutorial ===
+        // Show the tutorial overlay on level 1 if the player hasn't seen it yet
+        if (level == 1) {
+            viewModelScope.launch {
+                val settings = settingsRepo.getSettings().first()
+                if (!settings.tutorialSeen) {
+                    _uiState.update { it.copy(showTutorial = true) }
+                }
+            }
+        }
     }
 
     /**
@@ -68,10 +156,30 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
     fun onSwipe(from: Position, to: Position) {
         // Only accept input during Idle phase
         if (_uiState.value.phase != GamePhase.Idle) return
+        // Block input while candies are still dropping in
+        if (_uiState.value.boardEntryProgress < 1f) return
+        // Block swipes when a power-up is in target selection mode
+        if (_uiState.value.activePowerUp != null) return
+
+        // Cancel any active hint — player is interacting with the board
+        hintTimerJob?.cancel()
+        _uiState.update { it.copy(hintPositions = emptySet(), hintAnimProgress = 0f) }
 
         viewModelScope.launch {
             val action = SwapAction(from, to)
             currentSwapAction = action
+
+            // === Undo: Capture snapshot before the swap ===
+            // Only capture if undo hasn't been used this level (one undo per level)
+            if (!_uiState.value.undoUsedThisLevel) {
+                undoSnapshot = UndoSnapshot(
+                    board = engine.board.deepCopy(),
+                    score = engine.score,
+                    movesRemaining = engine.movesRemaining,
+                    iceBroken = engine.objectiveTracker.iceBroken,
+                    candiesCleared = engine.objectiveTracker.candiesCleared
+                )
+            }
 
             // === Phase 1: Animate the swap ===
             sound.playSwap()
@@ -92,6 +200,9 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
 
             if (!isValid) {
                 // Invalid swap — animate back
+                // Clear the snapshot since no valid move was made
+                undoSnapshot = null
+
                 _uiState.update {
                     it.copy(
                         swapAction = SwapAction(to, from), // Reverse direction
@@ -112,11 +223,13 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
             }
 
             // === Phase 3: Valid swap — run the cascade loop ===
+            // Mark undo as available since we have a valid snapshot
             _uiState.update {
                 it.copy(
                     swapAction = null,
                     swapProgress = 0f,
-                    movesRemaining = engine.movesRemaining
+                    movesRemaining = engine.movesRemaining,
+                    undoAvailable = undoSnapshot != null && !it.undoUsedThisLevel
                 )
             }
 
@@ -190,8 +303,10 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
             // Show the matching phase (highlight matched candies)
             val matchedPositions = engine.lastMatches.flatMap { it.positions }.toSet()
 
-            // Play match sound effect
-            sound.playMatch()
+            // Play match sound — pitch scales with the largest match size
+            // (match-4 and match-5+ get progressively higher, more exciting pitches)
+            val largestMatchSize = engine.lastMatches.maxOfOrNull { it.positions.size } ?: 3
+            sound.playMatch(largestMatchSize)
 
             _uiState.update {
                 it.copy(
@@ -213,19 +328,33 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
                 state.copy(matchClearProgress = progress)
             }
 
+            // Track ice count before processing so we can detect ice breaks
+            val iceCountBefore = engine.objectiveTracker.iceBroken
+
             // Process this cascade step in the engine
             val result = engine.processCascadeStep(
                 swapAction = if (isFirstStep) currentSwapAction else null
             )
             isFirstStep = false
 
-            // Play cascade sound (pitch increases with combo level for satisfaction)
+            // Play cascade sound (pitch + volume escalate with combo level)
             sound.playCascade(engine.comboCount)
 
             // If special candies were activated, play the special sound too
             if (result.specialActivations.isNotEmpty()) {
                 sound.playSpecialActivation()
             }
+
+            // Play ice break sound if any ice was shattered this step
+            val iceCountAfter = engine.objectiveTracker.iceBroken
+            if (iceCountAfter > iceCountBefore) {
+                sound.playIceBreak()
+            }
+
+            // === Feature 3: Star Progress ===
+            // Check if the new score earned a new star
+            val newStars = engine.getStarRating()
+            val oldStars = _uiState.value.currentStars
 
             // Update UI with the results: the board is already in its FINAL state
             // (engine applied gravity), but we set fallProgress=0 so BoardCanvas
@@ -240,7 +369,17 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
                     comboCount = engine.comboCount,
                     lastScoreGained = result.scoreGained,
                     fallingCandies = result.gravityResult.movements,
-                    fallProgress = 0f
+                    fallProgress = 0f,
+                    // Feature 1: Track the highest combo reached this level
+                    maxComboReached = maxOf(it.maxComboReached, engine.comboCount),
+                    // Feature 3: Update live star count
+                    currentStars = newStars,
+                    // === Sync objective progress from engine tracker ===
+                    iceBroken = engine.objectiveTracker.iceBroken,
+                    candiesCleared = engine.objectiveTracker.candiesCleared,
+                    objectiveComplete = engine.objectiveTracker.isObjectiveMet(
+                        engine.score, engine.board.obstacles
+                    )
                 )
             }
 
@@ -277,6 +416,39 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
                     // Hold the combo text briefly visible, then reset
                     delay(200)
                     _uiState.update { it.copy(comboAnimProgress = 0f) }
+                }
+            }
+
+            // === Feature 1: Screen shake for big combos (3+ cascades) ===
+            // Adds a satisfying physical shake to the board when chains get long.
+            // Runs concurrently — doesn't block the fall animation.
+            if (engine.comboCount >= 3) {
+                viewModelScope.launch {
+                    _uiState.update { it.copy(screenShakeProgress = 0f) }
+                    // Quick, punchy shake over 300ms
+                    animateProgress(durationMs = 300, steps = 15) { state, progress ->
+                        state.copy(screenShakeProgress = progress)
+                    }
+                    _uiState.update { it.copy(screenShakeProgress = 0f) }
+                }
+            }
+
+            // === Feature 3: Star unlock animation ===
+            // When a new star is earned mid-game, play a celebratory scale animation
+            if (newStars > oldStars) {
+                viewModelScope.launch {
+                    _uiState.update {
+                        it.copy(starJustUnlocked = newStars, starUnlockAnimProgress = 0f)
+                    }
+                    // Star scales up with overshoot then settles over 500ms
+                    animateProgress(durationMs = 500, steps = 20) { state, progress ->
+                        state.copy(starUnlockAnimProgress = progress)
+                    }
+                    // Hold briefly, then clear
+                    delay(300)
+                    _uiState.update {
+                        it.copy(starJustUnlocked = 0, starUnlockAnimProgress = 0f)
+                    }
                 }
             }
 
@@ -322,48 +494,468 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
             delay(200) // Brief pause so new board is visible before input resumes
         }
 
-        // Check end condition (game over or level complete)
+        // Check end condition (game over, level complete, or bonus moves)
         val endPhase = engine.evaluateEndCondition()
 
-        if (endPhase == GamePhase.LevelComplete || endPhase == GamePhase.GameOver) {
-            val stars = engine.getStarRating()
-
-            // Play the appropriate end-of-game sound
-            if (endPhase == GamePhase.LevelComplete) {
-                sound.playLevelComplete()
-            } else {
-                sound.playGameOver()
+        when (endPhase) {
+            GamePhase.BonusMoves -> {
+                // Non-score objective completed with remaining moves!
+                // Trigger the bonus moves loop where each leftover move
+                // auto-destroys a random candy for bonus points.
+                runBonusMoveLoop()
             }
 
-            // Save progress if the player won
-            if (endPhase == GamePhase.LevelComplete) {
-                viewModelScope.launch {
-                    ServiceLocator.progressRepository.saveProgress(
-                        levelNumber = levelNumber,
-                        stars = stars,
-                        score = engine.score
+            GamePhase.LevelComplete, GamePhase.GameOver -> {
+                val stars = engine.getStarRating()
+
+                // Play the appropriate end-of-game sound
+                if (endPhase == GamePhase.LevelComplete) {
+                    sound.playLevelComplete()
+                } else {
+                    sound.playGameOver()
+                }
+
+                // Save progress if the player won
+                if (endPhase == GamePhase.LevelComplete) {
+                    viewModelScope.launch {
+                        ServiceLocator.progressRepository.saveProgress(
+                            levelNumber = levelNumber,
+                            stars = stars,
+                            score = engine.score
+                        )
+                    }
+                }
+
+                _uiState.update {
+                    it.copy(
+                        phase = endPhase,
+                        stars = stars
                     )
                 }
             }
 
+            else -> {
+                // Back to idle — player can make another move
+                // Clean up all animation state so nothing lingers
+                _uiState.update {
+                    it.copy(
+                        phase = GamePhase.Idle,
+                        matchedPositions = emptySet(),
+                        lastScoreGained = 0,
+                        fallingCandies = emptyList(),
+                        fallProgress = 0f,
+                        matchClearProgress = 0f
+                    )
+                }
+
+                // Restart the hint timer — if the player sits idle for 5 seconds,
+                // we'll show them a valid move
+                startHintTimer()
+            }
+        }
+    }
+
+    // ===== Bonus Moves System =====
+    // When a non-score objective (BreakAllIce, ClearCandyType) is completed
+    // with remaining moves, each leftover move auto-destroys a random candy
+    // for bonus points. This is the classic "level complete fireworks" moment.
+
+    /**
+     * Run the bonus moves loop: each remaining move destroys a random candy.
+     *
+     * Mirrors the cascade loop pattern:
+     * - For each move: pause → destroy candy → gravity → cascade if needed
+     * - Score popups show points earned per bonus move
+     * - After all moves consumed, transitions to LevelComplete
+     */
+    private suspend fun runBonusMoveLoop() {
+        // Brief pause before bonus moves start (dramatic buildup)
+        delay(500)
+
+        while (engine.movesRemaining > 0) {
+            // Update UI to show bonus move phase and remaining count
             _uiState.update {
                 it.copy(
-                    phase = endPhase,
-                    stars = stars
+                    bonusMoveActive = true,
+                    bonusMovesRemaining = engine.movesRemaining
                 )
             }
-        } else {
-            // Back to idle — player can make another move
-            // Clean up all animation state so nothing lingers
+
+            // Pause between bonus moves for dramatic effect
+            delay(400)
+
+            // Play the special activation sound for each bonus move
+            sound.playSpecialActivation()
+
+            // Perform the bonus move in the engine
+            val success = engine.performBonusMove()
+            if (!success) break  // Safety: no candies left or no moves
+
+            // Sync board + score + moves to UI
             _uiState.update {
                 it.copy(
-                    phase = GamePhase.Idle,
-                    matchedPositions = emptySet(),
-                    lastScoreGained = 0,
-                    fallingCandies = emptyList(),
-                    fallProgress = 0f,
-                    matchClearProgress = 0f
+                    board = engine.board,
+                    score = engine.score,
+                    movesRemaining = engine.movesRemaining,
+                    bonusMovesRemaining = engine.movesRemaining
                 )
+            }
+
+            // Score popup (runs concurrently while gravity animates)
+            val scoreGained = if (engine.lastSpecialActivations.isNotEmpty()) {
+                engine.lastSpecialActivations.size * 80
+            } else {
+                50
+            }
+            viewModelScope.launch {
+                _uiState.update {
+                    it.copy(scorePopupValue = scoreGained, scorePopupProgress = 0f)
+                }
+                animateProgress(durationMs = 600, steps = 24) { state, progress ->
+                    state.copy(scorePopupProgress = progress)
+                }
+                _uiState.update {
+                    it.copy(scorePopupValue = 0, scorePopupProgress = 0f)
+                }
+            }
+
+            // Animate gravity fall (candies dropping into empty spaces)
+            val gravityResult = engine.lastGravityResult
+            if (gravityResult != null && gravityResult.movements.isNotEmpty()) {
+                _uiState.update {
+                    it.copy(
+                        fallingCandies = gravityResult.movements,
+                        fallProgress = 0f
+                    )
+                }
+                animateProgress(durationMs = 350, steps = 22) { state, progress ->
+                    state.copy(fallProgress = progress)
+                }
+                _uiState.update {
+                    it.copy(fallingCandies = emptyList(), fallProgress = 0f)
+                }
+            }
+
+            // If the bonus move triggered matches, run the full cascade loop
+            if (engine.lastMatches.isNotEmpty()) {
+                runCascadeLoop()
+            }
+
+            // Update star rating (bonus moves can push score to new star thresholds)
+            _uiState.update { it.copy(currentStars = engine.getStarRating()) }
+        }
+
+        // All bonus moves consumed — level complete!
+        val stars = engine.getStarRating()
+        sound.playLevelComplete()
+
+        // Save progress
+        viewModelScope.launch {
+            ServiceLocator.progressRepository.saveProgress(
+                levelNumber = levelNumber,
+                stars = stars,
+                score = engine.score
+            )
+        }
+
+        _uiState.update {
+            it.copy(
+                bonusMoveActive = false,
+                bonusMovesRemaining = 0,
+                phase = GamePhase.LevelComplete,
+                stars = stars,
+                movesRemaining = 0
+            )
+        }
+    }
+
+    // ===== Feature 2: Restart =====
+
+    /** Show the restart confirmation dialog. */
+    fun onRestartClicked() {
+        _uiState.update { it.copy(showRestartDialog = true) }
+    }
+
+    /** Dismiss the restart dialog without restarting. */
+    fun onRestartDismissed() {
+        _uiState.update { it.copy(showRestartDialog = false) }
+    }
+
+    /**
+     * Restart the current level from scratch.
+     * Cancels the hint timer, clears undo state, and reinitializes the board.
+     */
+    fun restartLevel() {
+        hintTimerJob?.cancel()
+        undoSnapshot = null
+        _uiState.update { it.copy(showRestartDialog = false) }
+        startLevel(_uiState.value.levelNumber)
+    }
+
+    // ===== Feature 3: Undo =====
+
+    /**
+     * Undo the last move.
+     *
+     * Restores the board, score, and moves from the snapshot taken before
+     * the last valid swap. Can only be used once per level.
+     */
+    fun onUndo() {
+        val snapshot = undoSnapshot ?: return
+        if (_uiState.value.phase != GamePhase.Idle) return
+        if (_uiState.value.undoUsedThisLevel) return
+
+        // Cancel hint timer — we're changing the board
+        hintTimerJob?.cancel()
+
+        // Restore engine state from the snapshot (including objective counters)
+        engine.restoreState(
+            snapshot.board, snapshot.score, snapshot.movesRemaining,
+            snapshot.iceBroken, snapshot.candiesCleared
+        )
+
+        // Update UI and mark undo as used
+        _uiState.update {
+            it.copy(
+                board = engine.board,
+                score = engine.score,
+                movesRemaining = engine.movesRemaining,
+                phase = GamePhase.Idle,
+                undoAvailable = false,
+                undoUsedThisLevel = true,
+                // Recalculate stars for the restored score
+                currentStars = engine.getStarRating(),
+                // Restore objective progress
+                iceBroken = engine.objectiveTracker.iceBroken,
+                candiesCleared = engine.objectiveTracker.candiesCleared,
+                objectiveComplete = engine.objectiveTracker.isObjectiveMet(
+                    engine.score, engine.board.obstacles
+                )
+            )
+        }
+
+        // Clear the snapshot — can't undo again
+        undoSnapshot = null
+
+        // Restart hint timer for the restored board
+        startHintTimer()
+    }
+
+    // ===== Feature 4: Tutorial =====
+
+    /**
+     * Dismiss the tutorial overlay and save that the player has seen it.
+     * Won't show again on future level 1 plays.
+     */
+    fun dismissTutorial() {
+        _uiState.update { it.copy(showTutorial = false) }
+        viewModelScope.launch {
+            settingsRepo.saveTutorialSeen(true)
+        }
+    }
+
+    // ===== Power-Ups / Boosters =====
+
+    /**
+     * Called when the player taps a power-up button.
+     *
+     * For power-ups that need a target (Hammer, Color Bomb):
+     * - Enters "target selection" mode — the board waits for a tap instead of a swipe
+     * - The selected power-up is stored in `activePowerUp`
+     *
+     * For power-ups that don't need a target (Extra Moves):
+     * - Executes immediately and deducts stars
+     */
+    fun onPowerUpSelected(type: PowerUpType) {
+        val state = _uiState.value
+        if (state.phase != GamePhase.Idle) return
+        if (state.boardEntryProgress < 1f) return
+        if (state.availableStars < type.starCost) return
+
+        // Cancel any active hint — player is interacting
+        hintTimerJob?.cancel()
+        _uiState.update { it.copy(hintPositions = emptySet(), hintAnimProgress = 0f) }
+
+        if (type.needsTarget) {
+            // Enter target selection mode — board will listen for taps
+            _uiState.update { it.copy(activePowerUp = type) }
+        } else {
+            // Extra Moves: execute immediately, no target needed
+            executePowerUp(type, position = null)
+        }
+    }
+
+    /**
+     * Called when the player taps a candy while in power-up target selection mode.
+     *
+     * This is triggered by BoardCanvas when `activePowerUp != null`.
+     * The tapped position is used as the target for the active power-up.
+     */
+    fun onBoardTapForPowerUp(position: Position) {
+        val type = _uiState.value.activePowerUp ?: return
+        executePowerUp(type, position)
+    }
+
+    /**
+     * Cancel the current power-up target selection.
+     * Returns the board to normal swipe mode without spending any stars.
+     */
+    fun cancelPowerUp() {
+        _uiState.update { it.copy(activePowerUp = null) }
+        startHintTimer()
+    }
+
+    /**
+     * Execute a power-up: run the engine method, deduct stars, and handle cascades.
+     *
+     * @param type Which power-up to use
+     * @param position Target position (null for ExtraMoves which doesn't need one)
+     */
+    private fun executePowerUp(type: PowerUpType, position: Position?) {
+        viewModelScope.launch {
+            // Clear the active power-up mode
+            _uiState.update { it.copy(activePowerUp = null) }
+
+            // Execute the power-up in the engine
+            val success = when (type) {
+                PowerUpType.Hammer -> {
+                    if (position == null) return@launch
+                    sound.playSpecialActivation()
+                    engine.useHammer(position)
+                }
+                PowerUpType.ColorBomb -> {
+                    if (position == null) return@launch
+                    sound.playSpecialActivation()
+                    engine.useColorBomb(position)
+                }
+                PowerUpType.ExtraMoves -> {
+                    engine.useExtraMoves()
+                }
+            }
+
+            if (!success) {
+                // Power-up failed (e.g., tapped an empty cell) — don't charge stars
+                startHintTimer()
+                return@launch
+            }
+
+            // Deduct stars and persist the spend
+            val progressRepo = ServiceLocator.progressRepository
+            progressRepo.spendStars(type.starCost)
+
+            // Refresh available stars from persistence
+            val updatedProgress = progressRepo.getProgress().first()
+            _uiState.update { it.copy(availableStars = updatedProgress.availableStars) }
+
+            // Handle the result based on what the engine did
+            when (type) {
+                PowerUpType.ExtraMoves -> {
+                    // Simple: just update the moves counter in the UI
+                    _uiState.update {
+                        it.copy(movesRemaining = engine.movesRemaining)
+                    }
+                    startHintTimer()
+                }
+                PowerUpType.Hammer, PowerUpType.ColorBomb -> {
+                    // Animate gravity fall first, then run cascade if needed
+                    val gravityResult = engine.lastGravityResult
+                    _uiState.update {
+                        it.copy(
+                            board = engine.board,
+                            score = engine.score,
+                            phase = GamePhase.Cascading,
+                            fallingCandies = gravityResult?.movements ?: emptyList(),
+                            fallProgress = 0f,
+                            currentStars = engine.getStarRating()
+                        )
+                    }
+
+                    // Animate the gravity fall
+                    animateProgress(durationMs = 350, steps = 22) { state, progress ->
+                        state.copy(fallProgress = progress)
+                    }
+                    _uiState.update {
+                        it.copy(fallingCandies = emptyList(), fallProgress = 0f)
+                    }
+
+                    // If the engine found more matches, run the full cascade loop
+                    if (engine.lastMatches.isNotEmpty()) {
+                        runCascadeLoop()
+                    } else {
+                        // No cascades — check end condition and return to idle
+                        val endPhase = engine.evaluateEndCondition()
+                        if (endPhase == GamePhase.LevelComplete || endPhase == GamePhase.GameOver) {
+                            val stars = engine.getStarRating()
+                            if (endPhase == GamePhase.LevelComplete) {
+                                sound.playLevelComplete()
+                                ServiceLocator.progressRepository.saveProgress(
+                                    levelNumber = levelNumber,
+                                    stars = stars,
+                                    score = engine.score
+                                )
+                            } else {
+                                sound.playGameOver()
+                            }
+                            _uiState.update {
+                                it.copy(phase = endPhase, stars = stars)
+                            }
+                        } else {
+                            _uiState.update {
+                                it.copy(
+                                    phase = GamePhase.Idle,
+                                    matchedPositions = emptySet(),
+                                    lastScoreGained = 0
+                                )
+                            }
+                            startHintTimer()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Start the idle hint timer.
+     *
+     * If the player doesn't swipe for 5 seconds while the game is in the Idle
+     * phase, we highlight a valid move by showing a pulsing glow on the two
+     * candies that can be swapped. The hint resets whenever the player interacts
+     * with the board (cancelled in onSwipe()).
+     */
+    private fun startHintTimer() {
+        // Cancel any existing timer first
+        hintTimerJob?.cancel()
+
+        // Clear any currently showing hint
+        _uiState.update { it.copy(hintPositions = emptySet(), hintAnimProgress = 0f) }
+
+        hintTimerJob = viewModelScope.launch {
+            // Wait 5 seconds of idle time
+            delay(5000L)
+
+            // Only show hint if still in Idle phase
+            if (_uiState.value.phase != GamePhase.Idle) return@launch
+
+            // Find a valid move using the engine's shuffle checker
+            val board = _uiState.value.board ?: return@launch
+            val hint = engine.shuffleChecker.findValidMove(board) ?: return@launch
+
+            // Set the hint positions — BoardCanvas will draw glowing circles here
+            _uiState.update {
+                it.copy(hintPositions = setOf(hint.from, hint.to))
+            }
+
+            // Animate a pulsing glow — loops until this job is cancelled
+            // (cancelled when the player swipes or a new hint timer starts)
+            // Each cycle: progress goes 0 → 1 over 800ms, creating a "breathing" effect
+            while (true) {
+                animateProgress(durationMs = 800, steps = 16) { state, progress ->
+                    state.copy(hintAnimProgress = progress)
+                }
+                // Brief pause between pulses
+                _uiState.update { it.copy(hintAnimProgress = 0f) }
+                delay(200L)
             }
         }
     }
@@ -413,5 +1005,75 @@ data class GameUiState(
     val comboAnimProgress: Float = 0f,
 
     /** Shuffle shake: 0=start of shake, 1=shake complete. Drives board wobble. */
-    val shuffleProgress: Float = 0f
+    val shuffleProgress: Float = 0f,
+
+    // === Feature 1: Enhanced Combo System ===
+    /** Screen shake: 0=start of shake, 1=shake finished. Drives board offset on big combos. */
+    val screenShakeProgress: Float = 0f,
+    /** Max combo reached during this entire level (for end-of-level summary). */
+    val maxComboReached: Int = 0,
+
+    // === Feature 2: Match Hint System ===
+    /** Positions of the two candies being hinted (pulsing glow). Empty = no hint showing. */
+    val hintPositions: Set<Position> = emptySet(),
+    /** Hint glow animation: 0=start of pulse cycle, 1=end of one pulse. Repeats. */
+    val hintAnimProgress: Float = 0f,
+
+    // === Feature 3: In-Game Star Progress ===
+    /** Number of stars earned so far during gameplay (0-3). Updated each cascade step. */
+    val currentStars: Int = 0,
+    /** Which star number just unlocked (1, 2, or 3). 0 = no unlock in progress. */
+    val starJustUnlocked: Int = 0,
+    /** Star unlock animation: 0=start, 1=complete. Non-zero when a new star was just earned. */
+    val starUnlockAnimProgress: Float = 0f,
+
+    // === Feature 2: Restart ===
+    /** Whether the restart confirmation dialog is showing. */
+    val showRestartDialog: Boolean = false,
+
+    // === Feature 3: Undo ===
+    /** Whether an undo is currently available (snapshot exists and undo not yet used). */
+    val undoAvailable: Boolean = false,
+    /** Whether the undo has been used this level (only one undo per level). */
+    val undoUsedThisLevel: Boolean = false,
+
+    // === Feature 4: Tutorial ===
+    /** Whether the tutorial overlay is currently showing. */
+    val showTutorial: Boolean = false,
+
+    // === Pre-Level Dialog ===
+    /** Whether the pre-level dialog is showing (before board loads). */
+    val showPreLevelDialog: Boolean = false,
+
+    // === Visual Polish: Board Entry Animation ===
+    /** Board entry drop-in: 0=candies above board, 1=fully settled. */
+    val boardEntryProgress: Float = 1f,
+
+    // === Power-Ups / Boosters ===
+    /** How many stars the player currently has available to spend. */
+    val availableStars: Int = 0,
+    /** Which power-up is currently in "select target" mode. Null = none active. */
+    val activePowerUp: PowerUpType? = null,
+
+    // === Objective System ===
+    /** The objective type for the current level. Null before level loads. */
+    val objectiveType: ObjectiveType? = null,
+    /** For BreakAllIce: how many ice blocks have been broken so far. */
+    val iceBroken: Int = 0,
+    /** For BreakAllIce: total ice blocks on this level at start. */
+    val totalIce: Int = 0,
+    /** For ClearCandyType: how many of the target color have been cleared. */
+    val candiesCleared: Int = 0,
+    /** For ClearCandyType: how many of the target color need to be cleared. */
+    val targetCandyCount: Int = 0,
+    /** For ClearCandyType: which candy color is the target. Null for other objectives. */
+    val targetCandyType: CandyType? = null,
+    /** Whether the level objective has been completed (for UI display). */
+    val objectiveComplete: Boolean = false,
+
+    // === Bonus Moves ===
+    /** Whether bonus moves are currently being performed (auto-destroying candies). */
+    val bonusMoveActive: Boolean = false,
+    /** How many bonus moves remain to be consumed. */
+    val bonusMovesRemaining: Int = 0
 )

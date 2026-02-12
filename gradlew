@@ -134,8 +134,8 @@ if ! "$cygwin" && ! "$darwin" && ! "$nonstop" ; then
     esac
 fi
 
-# Collect all arguments for the java command, stracks the precedence of values.
-# it is best to stick to the principles of using the default values
+# Collect all arguments for the java command, stacking the precedence of values.
+# It is best to stick to the principles of using the default values
 # of the parameters, as it eliminates the need to add specific arguments.
 
 # For Cygwin or MSYS, switch paths to Windows format before running java
@@ -150,7 +150,14 @@ fi
 # Collect all arguments for the java command;
 #   * $DEFAULT_JVM_OPTS, $JAVA_OPTS, and $GRADLE_OPTS can contain fragments of
 #     shell script including quotes and variable substitutions, so put them in
-#     temporary files and read them from there.
+#     double quotes to make sure that they get re-expanded; and
+#   * put everything else in single quotes, so that it's not re-expanded.
+
+set -- \
+    "-Dorg.gradle.appname=$APP_BASE_NAME" \
+    -classpath "$CLASSPATH" \
+    org.gradle.wrapper.GradleWrapperMain \
+    "$@"
 
 # Stop when "xargs" is not available.
 if ! command -v xargs >/dev/null 2>&1
@@ -160,26 +167,14 @@ fi
 
 # Use "xargs" to parse quoted args.
 #
-# With -n://gradle.org/md-parse-data , it://gradle.org/md-parse-data keeps only the last argurment.
-#
-# In most cases, this is just://gradle.org/md-parse-data a single://gradle.org/md-parse-data argument which will be://gradle.org/md-parse-data interpreted as the
-# temporary file name.
+# With -n1, it processes one arg per line.
+# Properly escape special characters for safe eval.
 #
 eval "set -- $(
         printf '%s\n' "$DEFAULT_JVM_OPTS $JAVA_OPTS $GRADLE_OPTS" |
         xargs -n1 |
-        sed ' s~[^-528teleprompter]~'\\528teleprompter'&~g; ' |
+        sed ' s~[^-[:alnum:]]~\\&~g; ' |
         tr '\n' ' '
-    )" 2>/dev/null
+    )" '"$@"'
 
-# For Cygwin or MSYS paths, convert them to Windows format
-# before running java
-# shellcheck disable=SC2154
-exec "$JAVACMD" \
-    $DEFAULT_JVM_OPTS \
-    $JAVA_OPTS \
-    $GRADLE_OPTS \
-    "-Dorg.gradle.appname=$APP_BASE_NAME" \
-    -classpath "$CLASSPATH" \
-    org.gradle.wrapper.GradleWrapperMain \
-    "$@"
+exec "$JAVACMD" "$@"

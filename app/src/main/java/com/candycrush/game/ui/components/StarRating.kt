@@ -43,7 +43,7 @@ fun StarRating(
 /**
  * Draw a 5-pointed star shape.
  */
-private fun DrawScope.drawStar(color: Color, center: Offset, radius: Float) {
+internal fun DrawScope.drawStar(color: Color, center: Offset, radius: Float) {
     val path = Path()
     val innerRadius = radius * 0.45f
 

@@ -17,5 +17,16 @@ package com.candycrush.game.model
 data class PlayerProgress(
     val highestUnlockedLevel: Int = 1,
     val levelStars: Map<Int, Int> = emptyMap(),
-    val levelScores: Map<Int, Int> = emptyMap()
-)
+    val levelScores: Map<Int, Int> = emptyMap(),
+    /** Total stars spent on power-ups. Available stars = sum(levelStars) - starsSpent. */
+    val starsSpent: Int = 0
+) {
+    /**
+     * Calculate how many stars the player can currently spend on power-ups.
+     *
+     * Available = total stars earned across all levels minus stars already spent.
+     * Earning better star ratings on replayed levels increases the budget.
+     */
+    val availableStars: Int
+        get() = levelStars.values.sum() - starsSpent
+}

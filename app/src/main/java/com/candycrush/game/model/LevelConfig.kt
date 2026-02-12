@@ -28,5 +28,17 @@ data class LevelConfig(
     val twoStarScore: Int,
     val threeStarScore: Int,
     val availableCandyTypes: Int = 5,
-    val description: String = ""
+    val description: String = "",
+    /**
+     * Obstacle positions for this level.
+     * Key = board position, Value = obstacle type (Ice or Stone).
+     * Empty map (default) means no obstacles — backward compatible with all existing levels.
+     */
+    val obstacles: Map<Position, ObstacleType> = emptyMap(),
+    /**
+     * The objective the player must complete to win this level.
+     * Default = ReachScore (classic behavior: win when score >= targetScore).
+     * See ObjectiveType for all options (BreakAllIce, ClearCandyType, etc.).
+     */
+    val objective: ObjectiveType = ObjectiveType.ReachScore
 )

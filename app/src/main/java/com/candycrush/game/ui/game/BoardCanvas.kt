@@ -1,26 +1,43 @@
 package com.candycrush.game.ui.game
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import com.candycrush.game.engine.GravityProcessor
 import com.candycrush.game.model.BoardState
 import com.candycrush.game.model.GamePhase
+import com.candycrush.game.model.ObstacleType
+import com.candycrush.game.ui.theme.StarGold
 import com.candycrush.game.model.Position
+import com.candycrush.game.model.PowerUpType
+import com.candycrush.game.model.SpecialType
 import com.candycrush.game.model.SwapAction
+import com.candycrush.game.ui.components.toColor
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.delay
 
 /**
  * The main Canvas composable that renders the entire game board.
@@ -54,11 +71,123 @@ fun BoardCanvas(
     fallProgress: Float = 0f,
     isShuffling: Boolean = false,
     shuffleProgress: Float = 0f,
+    screenShakeProgress: Float = 0f,
+    hintPositions: Set<Position> = emptySet(),
+    hintAnimProgress: Float = 0f,
+    boardEntryProgress: Float = 1f,
+    activePowerUp: PowerUpType? = null,
+    comboLevel: Int = 0,
     onSwipe: (Position, Position) -> Unit,
+    onPowerUpTap: (Position) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     // Remember the calculated cell size so we can use it in the gesture detector
     val cellSizeState = remember { mutableFloatStateOf(0f) }
+
+    // === Special candy animation loop ===
+    // Runs continuously from 0→1 over 2 seconds, then restarts.
+    // Used to pulse stripes, breathe wrapped glow, and rotate color bomb dots.
+    val infiniteTransition = rememberInfiniteTransition(label = "specialAnim")
+    val specialAnimProgress by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "specialAnimLoop"
+    )
+
+    // === Particle System ===
+    // Managed entirely in the composable (not in ViewModel) because
+    // particles are purely visual and need frame-by-frame updates.
+    val particleSystem = remember { ParticleSystem() }
+
+    // Track whether we already spawned particles for the current match clear
+    // to prevent spawning duplicates every recomposition.
+    val hasSpawnedForCurrentMatch = remember { mutableStateOf(false) }
+
+    // When matchClearProgress transitions from 0 to >0, spawn particles
+    // at each matched candy's position using the candy's color.
+    //
+    // Enhanced: Different particle effects for different candy/obstacle types:
+    // - Normal candy: combo-scaled burst (bigger combos → more particles)
+    // - StripedH/V: directional line burst in the stripe's direction
+    // - Wrapped: expanding ring burst
+    // - ColorBomb: rainbow multicolor burst
+    // - Ice overlay: additional white/cyan ice shatter particles
+    LaunchedEffect(matchClearProgress) {
+        if (matchClearProgress > 0f && matchClearProgress < 0.15f && !hasSpawnedForCurrentMatch.value) {
+            hasSpawnedForCurrentMatch.value = true
+            val cellSize = cellSizeState.floatValue
+            if (cellSize > 0f) {
+                for (pos in matchedPositions) {
+                    val candy = boardState.grid[pos.row][pos.col] ?: continue
+                    val cx = pos.col * cellSize + cellSize / 2
+                    val cy = pos.row * cellSize + cellSize / 2
+                    val color = candy.type.toColor()
+
+                    // Choose particle effect based on special type
+                    when (candy.special) {
+                        SpecialType.StripedHorizontal ->
+                            particleSystem.spawnStripedLine(cx, cy, color, horizontal = true, cellSize)
+                        SpecialType.StripedVertical ->
+                            particleSystem.spawnStripedLine(cx, cy, color, horizontal = false, cellSize)
+                        SpecialType.Wrapped ->
+                            particleSystem.spawnWrappedRing(cx, cy, color)
+                        SpecialType.ColorBomb ->
+                            particleSystem.spawnColorBombRainbow(cx, cy)
+                        else ->
+                            // Normal candies get combo-scaled particles
+                            particleSystem.spawnComboScaled(
+                                cx, cy, color, comboLevel,
+                                baseRadius = cellSize * 0.04f
+                            )
+                    }
+
+                    // Ice shatter particles: if this position has ice, add icy shards
+                    val obstacle = boardState.getObstacle(pos)
+                    if (obstacle == ObstacleType.Ice) {
+                        particleSystem.spawnIceShatter(cx, cy)
+                    }
+                }
+            }
+        }
+        if (matchClearProgress == 0f) {
+            hasSpawnedForCurrentMatch.value = false
+        }
+    }
+
+    // === Confetti celebration on level complete ===
+    // When the game phase transitions to LevelComplete, spawn 3 waves of
+    // colorful confetti that rain down from the top of the board canvas.
+    LaunchedEffect(phase) {
+        if (phase == GamePhase.LevelComplete) {
+            val cellSize = cellSizeState.floatValue
+            if (cellSize > 0f) {
+                val canvasWidth = cellSize * boardState.cols
+                val canvasHeight = cellSize * boardState.rows
+                // 3 staggered waves for a sustained confetti shower
+                particleSystem.spawnConfetti(canvasWidth, canvasHeight)
+                delay(300)
+                particleSystem.spawnConfetti(canvasWidth, canvasHeight)
+                delay(300)
+                particleSystem.spawnConfetti(canvasWidth, canvasHeight)
+            }
+        }
+    }
+
+    // Continuous frame loop for particle animation.
+    // Runs at ~60fps using a 16ms delay, updating particle positions each tick.
+    LaunchedEffect(Unit) {
+        while (isActive) {
+            if (particleSystem.hasParticles()) {
+                // ~60fps frame time in seconds (capped to prevent physics jumps)
+                particleSystem.update(0.016f)
+            }
+            delay(16L)
+        }
+    }
 
     Canvas(
         modifier = modifier
@@ -67,9 +196,31 @@ fun BoardCanvas(
             // Make the canvas aspect ratio match the board proportions
             .aspectRatio(boardState.cols.toFloat() / boardState.rows.toFloat())
             // Handle swipe gestures for candy swapping
-            .pointerInput(phase) {
-                // Only accept input during Idle phase
+            // === Power-up target selection: tap gesture ===
+            // When a power-up is active, we listen for taps instead of drags.
+            // The tap converts pixel coordinates to a board Position and calls
+            // onPowerUpTap so the ViewModel can execute the power-up there.
+            .pointerInput(activePowerUp) {
+                if (activePowerUp == null) return@pointerInput
+
+                detectTapGestures { offset ->
+                    val cellSize = cellSizeState.floatValue
+                    if (cellSize <= 0f) return@detectTapGestures
+
+                    val col = (offset.x / cellSize).toInt()
+                    val row = (offset.y / cellSize).toInt()
+                    val pos = Position(row, col)
+
+                    if (boardState.isInBounds(pos)) {
+                        onPowerUpTap(pos)
+                    }
+                }
+            }
+            // === Normal swipe gesture for candy swapping ===
+            .pointerInput(phase, activePowerUp) {
+                // Only accept input during Idle phase and when no power-up is active
                 if (phase != GamePhase.Idle) return@pointerInput
+                if (activePowerUp != null) return@pointerInput
 
                 // Track the starting position and whether we've already fired a swipe
                 var startPosition = Offset.Zero
@@ -151,6 +302,25 @@ fun BoardCanvas(
             }
         }
 
+        // === Draw stone obstacles ===
+        // Stones are drawn right after the background grid, BEFORE candies.
+        // They replace the cell visually — no candy exists at stone positions.
+        // Stones don't participate in board entry animation (they're always there).
+        for ((obstaclePos, obstacleType) in boardState.obstacles) {
+            if (obstacleType == ObstacleType.Stone) {
+                val stoneX = obstaclePos.col * cellSize + cellPadding
+                val stoneY = obstaclePos.row * cellSize + cellPadding
+                val stoneCellSize = cellSize - cellPadding * 2
+
+                drawStone(
+                    topLeft = Offset(stoneX, stoneY),
+                    cellSize = stoneCellSize,
+                    cornerRadius = cornerRadius,
+                    alpha = 1f
+                )
+            }
+        }
+
         // === Shuffle shake offset ===
         // During shuffling, the entire board shakes side-to-side.
         // The sine wave oscillates faster as progress increases, and the
@@ -162,6 +332,21 @@ fun BoardCanvas(
         } else {
             0f
         }
+
+        // === Feature 1: Screen shake for big combos ===
+        // A decaying sine wave that shakes the board in both X and Y directions.
+        // The amplitude decreases as progress increases (shakes hard then settles).
+        val comboShakeOffsetX = if (screenShakeProgress > 0f) {
+            val amplitude = cellSize * 0.08f * (1f - screenShakeProgress)
+            val frequency = screenShakeProgress * 8f * Math.PI.toFloat()
+            amplitude * kotlin.math.sin(frequency)
+        } else 0f
+
+        val comboShakeOffsetY = if (screenShakeProgress > 0f) {
+            val amplitude = cellSize * 0.05f * (1f - screenShakeProgress)
+            val frequency = screenShakeProgress * 8f * Math.PI.toFloat()
+            amplitude * kotlin.math.cos(frequency)
+        } else 0f
 
         // === Build a lookup map for fall animations ===
         // Maps each candy's unique ID to its movement data, so we can
@@ -176,9 +361,44 @@ fun BoardCanvas(
                 val pos = Position(row, col)
 
                 // Calculate the center position of this candy
-                // (shakeOffsetX is added for the shuffle wobble effect)
-                var centerX = col * cellSize + cellSize / 2 + shakeOffsetX
-                var centerY = row * cellSize + cellSize / 2
+                // (shakeOffsetX is added for the shuffle wobble effect,
+                //  comboShake offsets add screen shake on big combos)
+                var centerX = col * cellSize + cellSize / 2 + shakeOffsetX + comboShakeOffsetX
+                var centerY = row * cellSize + cellSize / 2 + comboShakeOffsetY
+
+                // === Board entry animation (candy drop-in) ===
+                // When a level starts, each candy drops in from above the board.
+                // Staggered by column (left→right) and row (top→bottom) to create
+                // a wave effect. Uses a bounce easing for a satisfying settle.
+                var entryAlphaMultiplier = 1f
+                if (boardEntryProgress < 1f) {
+                    val maxCols = boardState.cols.toFloat()
+                    val maxRows = boardState.rows.toFloat()
+                    // Stagger: left columns and top rows appear first
+                    val staggerDelay = (col / maxCols) * 0.3f + (row / maxRows) * 0.15f
+                    // Per-candy progress (0→1) accounting for stagger
+                    val candyProgress = ((boardEntryProgress - staggerDelay) / (1f - staggerDelay))
+                        .coerceIn(0f, 1f)
+
+                    // Bounce easing: fast approach, then overshoot and settle
+                    val bounceEased = if (candyProgress < 0.6f) {
+                        val t = candyProgress / 0.6f
+                        t * t // Accelerating approach
+                    } else {
+                        val t = (candyProgress - 0.6f) / 0.4f
+                        // Overshoot ~12% past target, then settle back
+                        1f + 0.12f * kotlin.math.sin(t * Math.PI.toFloat())
+                    }
+
+                    // Drop from above: candies start 1.2x board height above final position
+                    val dropDistance = boardState.rows * cellSize * 1.2f
+                    centerY -= dropDistance * (1f - bounceEased)
+
+                    // Fade in at the very start of each candy's drop
+                    if (candyProgress < 0.2f) {
+                        entryAlphaMultiplier = candyProgress / 0.2f
+                    }
+                }
 
                 // If this candy is part of a swap animation, offset its position
                 if (swapAnimation != null && swapProgress > 0f) {
@@ -212,7 +432,7 @@ fun BoardCanvas(
                 // === Match/clear animation ===
                 // Matched candies shrink and fade out as matchClearProgress goes 0→1
                 val isMatched = pos in matchedPositions
-                var alpha = 1f
+                var alpha = 1f * entryAlphaMultiplier
                 var drawRadius = candyRadius
 
                 if (isMatched && matchClearProgress > 0f) {
@@ -227,6 +447,29 @@ fun BoardCanvas(
                     drawRadius = candyRadius * 1.05f
                 }
 
+                // === Feature 2: Hint glow animation ===
+                // Hinted candies pulse with a gentle white glow ring behind them.
+                // The glow uses a sine wave to create a smooth "breathing" effect.
+                val isHinted = pos in hintPositions
+                if (isHinted && hintAnimProgress > 0f) {
+                    val glowPulse = kotlin.math.sin(hintAnimProgress * Math.PI.toFloat())
+                    val glowRadius = candyRadius * (1.1f + 0.15f * glowPulse)
+                    val glowAlpha = 0.3f + 0.3f * glowPulse
+
+                    // Outer gold ring — gives the hint glow more visibility
+                    drawCircle(
+                        color = StarGold.copy(alpha = glowAlpha * 0.4f),
+                        radius = glowRadius * 1.15f,
+                        center = Offset(centerX, centerY)
+                    )
+                    // Inner white glow
+                    drawCircle(
+                        color = Color.White.copy(alpha = glowAlpha),
+                        radius = glowRadius,
+                        center = Offset(centerX, centerY)
+                    )
+                }
+
                 // Only draw if the candy is still visible (not fully shrunk/faded)
                 if (alpha > 0.01f && drawRadius > 0.5f) {
                     drawCandy(
@@ -234,10 +477,50 @@ fun BoardCanvas(
                         centerX = centerX,
                         centerY = centerY,
                         radius = drawRadius,
-                        alpha = alpha
+                        alpha = alpha,
+                        specialAnimProgress = specialAnimProgress
                     )
+
+                    // === Ice overlay ===
+                    // If this candy has ice on it, draw the frozen overlay ON TOP.
+                    // The ice alpha follows the candy alpha so they fade out together
+                    // when the candy is matched (ice breaks when its candy is cleared).
+                    val obstacle = boardState.getObstacle(pos)
+                    if (obstacle == ObstacleType.Ice) {
+                        drawIce(
+                            center = Offset(centerX, centerY),
+                            radius = drawRadius,
+                            alpha = alpha
+                        )
+                    }
                 }
             }
+        }
+
+        // === Power-up targeting overlay ===
+        // When a power-up is in target selection mode, draw a semi-transparent
+        // colored overlay on the board to signal "tap a candy" mode.
+        if (activePowerUp != null) {
+            val overlayColor = when (activePowerUp) {
+                PowerUpType.Hammer -> Color(0x22FF6600)    // Orange tint
+                PowerUpType.ColorBomb -> Color(0x229966FF) // Purple tint
+                else -> Color(0x22FFFFFF)                  // White (shouldn't happen)
+            }
+            drawRect(
+                color = overlayColor,
+                size = size
+            )
+        }
+
+        // === Draw particles ON TOP of everything ===
+        // Particles are small colored circles that burst outward from
+        // cleared candies. They're drawn last so they appear above the grid.
+        for (particle in particleSystem.particles) {
+            drawCircle(
+                color = particle.color.copy(alpha = particle.alpha),
+                radius = particle.radius,
+                center = Offset(particle.x, particle.y)
+            )
         }
     }
 }

@@ -27,11 +27,17 @@ object LevelMapRoute
 @Serializable
 data class GameRoute(val levelNumber: Int)
 
+/** The settings screen for sound toggles and progress reset */
+@Serializable
+object SettingsRoute
+
 /** The results screen shown after completing or failing a level */
 @Serializable
 data class ResultsRoute(
     val levelNumber: Int,
     val score: Int,
     val stars: Int,
-    val won: Boolean
+    val won: Boolean,
+    /** Objective status text (e.g., "All ice broken!" or "Red: 20/25"). Empty = score-only level. */
+    val objectiveText: String = ""
 )

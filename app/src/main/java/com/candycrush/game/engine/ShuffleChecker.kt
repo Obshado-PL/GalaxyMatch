@@ -2,6 +2,7 @@ package com.candycrush.game.engine
 
 import com.candycrush.game.model.BoardState
 import com.candycrush.game.model.Position
+import com.candycrush.game.model.SwapAction
 
 /**
  * Detects when the board has no valid moves (deadlock) and shuffles it.
@@ -25,21 +26,63 @@ class ShuffleChecker(private val matchDetector: MatchDetector) {
      * @param board The current board state
      * @return True if at least one valid move exists, false if deadlocked
      */
-    fun hasValidMoves(board: BoardState): Boolean {
+    /**
+     * Find one valid move on the board, or null if no moves exist.
+     *
+     * Scans every adjacent pair (left-to-right, top-to-bottom) and returns
+     * the first swap that would produce a match. Used by the hint system
+     * to show the player a valid move after idle time.
+     *
+     * @param board The current board state
+     * @return A SwapAction representing a valid move, or null if deadlocked
+     */
+    fun findValidMove(board: BoardState): SwapAction? {
         for (row in 0 until board.rows) {
             for (col in 0 until board.cols) {
+                val pos1 = Position(row, col)
+
+                // Skip stone positions — can't swap from a stone wall
+                if (board.isStone(pos1)) continue
+
                 // Try swapping with the right neighbor
                 if (col + 1 < board.cols) {
-                    val pos1 = Position(row, col)
                     val pos2 = Position(row, col + 1)
-                    if (wouldMatch(board, pos1, pos2)) return true
+                    // Skip if neighbor is a stone — can't swap with a wall
+                    if (!board.isStone(pos2) && wouldMatch(board, pos1, pos2)) {
+                        return SwapAction(pos1, pos2)
+                    }
                 }
 
                 // Try swapping with the bottom neighbor
                 if (row + 1 < board.rows) {
-                    val pos1 = Position(row, col)
                     val pos2 = Position(row + 1, col)
-                    if (wouldMatch(board, pos1, pos2)) return true
+                    if (!board.isStone(pos2) && wouldMatch(board, pos1, pos2)) {
+                        return SwapAction(pos1, pos2)
+                    }
+                }
+            }
+        }
+        return null
+    }
+
+    fun hasValidMoves(board: BoardState): Boolean {
+        for (row in 0 until board.rows) {
+            for (col in 0 until board.cols) {
+                val pos1 = Position(row, col)
+
+                // Skip stone positions — can't swap from a stone wall
+                if (board.isStone(pos1)) continue
+
+                // Try swapping with the right neighbor
+                if (col + 1 < board.cols) {
+                    val pos2 = Position(row, col + 1)
+                    if (!board.isStone(pos2) && wouldMatch(board, pos1, pos2)) return true
+                }
+
+                // Try swapping with the bottom neighbor
+                if (row + 1 < board.rows) {
+                    val pos2 = Position(row + 1, col)
+                    if (!board.isStone(pos2) && wouldMatch(board, pos1, pos2)) return true
                 }
             }
         }
@@ -78,11 +121,17 @@ class ShuffleChecker(private val matchDetector: MatchDetector) {
      * @param board The board to shuffle (modified in place)
      */
     fun shuffleBoard(board: BoardState) {
-        // Collect all non-null candies
+        // Collect all non-null candies (skip stone positions — they have no candy)
         val allCandies = mutableListOf<com.candycrush.game.model.Candy>()
+        val playablePositions = mutableListOf<com.candycrush.game.model.Position>()
         for (row in 0 until board.rows) {
             for (col in 0 until board.cols) {
-                board.grid[row][col]?.let { allCandies.add(it) }
+                val pos = com.candycrush.game.model.Position(row, col)
+                // Only collect candies from non-stone positions
+                if (!board.isStone(pos)) {
+                    board.grid[row][col]?.let { allCandies.add(it) }
+                    playablePositions.add(pos)
+                }
             }
         }
 
@@ -93,13 +142,12 @@ class ShuffleChecker(private val matchDetector: MatchDetector) {
         do {
             allCandies.shuffle()
 
-            // Place shuffled candies back on the board
+            // Place shuffled candies back on playable positions only
+            // (stone positions are skipped — they stay null)
             var index = 0
-            for (row in 0 until board.rows) {
-                for (col in 0 until board.cols) {
-                    if (index < allCandies.size) {
-                        board.grid[row][col] = allCandies[index++]
-                    }
+            for (pos in playablePositions) {
+                if (index < allCandies.size) {
+                    board.grid[pos.row][pos.col] = allCandies[index++]
                 }
             }
 

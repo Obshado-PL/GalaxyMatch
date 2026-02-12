@@ -3,13 +3,19 @@ package com.candycrush.game.ui.game
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -25,7 +31,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import com.candycrush.game.model.CandyType
 import com.candycrush.game.model.GamePhase
+import com.candycrush.game.model.ObjectiveType
+import com.candycrush.game.model.PowerUpType
+import com.candycrush.game.ui.components.StarRating
 import com.candycrush.game.ui.theme.GameBackground
 import com.candycrush.game.ui.theme.StarGold
 
@@ -39,13 +49,13 @@ import com.candycrush.game.ui.theme.StarGold
  * - Shows game-over or level-complete overlays when appropriate
  *
  * @param levelNumber Which level to play
- * @param onGameEnd Called when the game ends (score, stars, won)
+ * @param onGameEnd Called when the game ends (score, stars, won, objectiveText)
  * @param onBackToMap Called when the player wants to return to the level map
  */
 @Composable
 fun GameScreen(
     levelNumber: Int,
-    onGameEnd: (score: Int, stars: Int, won: Boolean) -> Unit,
+    onGameEnd: (score: Int, stars: Int, won: Boolean, objectiveText: String) -> Unit,
     onBackToMap: () -> Unit
 ) {
     // Create ViewModel — remember ensures it survives recomposition
@@ -102,10 +112,87 @@ fun GameScreen(
                 levelConfig = state.levelConfig,
                 comboCount = state.comboCount,
                 levelNumber = state.levelNumber,
-                comboAnimProgress = state.comboAnimProgress
+                comboAnimProgress = state.comboAnimProgress,
+                currentStars = state.currentStars,
+                starJustUnlocked = state.starJustUnlocked,
+                starUnlockAnimProgress = state.starUnlockAnimProgress,
+                objectiveType = state.objectiveType,
+                iceBroken = state.iceBroken,
+                totalIce = state.totalIce,
+                candiesCleared = state.candiesCleared,
+                targetCandyCount = state.targetCandyCount,
+                targetCandyType = state.targetCandyType,
+                objectiveComplete = state.objectiveComplete
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // === Power-Up Booster Bar ===
+            // Shows 3 booster buttons the player can tap to activate power-ups.
+            // When a power-up is in targeting mode, shows instruction text + cancel instead.
+            val currentPowerUp = state.activePowerUp
+            if (currentPowerUp != null) {
+                // === Targeting mode: show instruction + cancel button ===
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = "Tap a candy to use ${currentPowerUp.emoji}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White,
+                        modifier = Modifier.weight(1f),
+                        textAlign = TextAlign.Center
+                    )
+                    Button(
+                        onClick = { viewModel.cancelPowerUp() },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color.White.copy(alpha = 0.15f)
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                    ) {
+                        Text("Cancel", color = Color.White, style = MaterialTheme.typography.labelMedium)
+                    }
+                }
+            } else {
+                // === Normal mode: show 3 booster buttons ===
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                ) {
+                    for (powerUp in PowerUpType.entries) {
+                        val canAfford = state.availableStars >= powerUp.starCost
+                        val isIdle = state.phase == GamePhase.Idle && state.boardEntryProgress >= 1f
+
+                        Button(
+                            onClick = { viewModel.onPowerUpSelected(powerUp) },
+                            enabled = canAfford && isIdle,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF3D3B6E),
+                                disabledContainerColor = Color.White.copy(alpha = 0.05f),
+                                disabledContentColor = Color.White.copy(alpha = 0.3f)
+                            ),
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            // Emoji icon + star cost label
+                            Text(
+                                text = "${powerUp.emoji} ${powerUp.starCost}⭐",
+                                color = if (canAfford && isIdle) Color.White
+                                else Color.White.copy(alpha = 0.3f),
+                                style = MaterialTheme.typography.labelMedium
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(2.dp))
 
             // === Game Board ===
             if (state.board != null) {
@@ -120,8 +207,17 @@ fun GameScreen(
                     fallProgress = state.fallProgress,
                     isShuffling = state.isShuffling,
                     shuffleProgress = state.shuffleProgress,
+                    screenShakeProgress = state.screenShakeProgress,
+                    hintPositions = state.hintPositions,
+                    hintAnimProgress = state.hintAnimProgress,
+                    boardEntryProgress = state.boardEntryProgress,
+                    activePowerUp = state.activePowerUp,
+                    comboLevel = state.comboCount,
                     onSwipe = { from, to ->
                         viewModel.onSwipe(from, to)
+                    },
+                    onPowerUpTap = { position ->
+                        viewModel.onBoardTapForPowerUp(position)
                     },
                     modifier = Modifier
                         .weight(1f)
@@ -129,21 +225,101 @@ fun GameScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // === Back to Map button ===
-            Button(
-                onClick = onBackToMap,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color.White.copy(alpha = 0.15f)
+            // === Bottom Action Buttons Row ===
+            // Contains Undo, Restart, and Back to Map buttons.
+            // Each button has a bounce animation: shrinks on press, springs back on release.
+
+            // Bounce animation state for each button (independent interaction sources)
+            val undoInteraction = remember { MutableInteractionSource() }
+            val undoPressed by undoInteraction.collectIsPressedAsState()
+            val undoScale by animateFloatAsState(
+                targetValue = if (undoPressed) 0.92f else 1.0f,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessMedium
                 ),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.padding(bottom = 16.dp)
+                label = "undoBounce"
+            )
+
+            val restartInteraction = remember { MutableInteractionSource() }
+            val restartPressed by restartInteraction.collectIsPressedAsState()
+            val restartScale by animateFloatAsState(
+                targetValue = if (restartPressed) 0.92f else 1.0f,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessMedium
+                ),
+                label = "restartBounce"
+            )
+
+            val mapInteraction = remember { MutableInteractionSource() }
+            val mapPressed by mapInteraction.collectIsPressedAsState()
+            val mapScale by animateFloatAsState(
+                targetValue = if (mapPressed) 0.92f else 1.0f,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    stiffness = Spring.StiffnessMedium
+                ),
+                label = "mapBounce"
+            )
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
             ) {
-                Text(
-                    text = "Back to Map",
-                    color = Color.White
-                )
+                // Undo button — orange, disabled when not available
+                Button(
+                    onClick = { viewModel.onUndo() },
+                    enabled = state.undoAvailable && state.phase == GamePhase.Idle,
+                    interactionSource = undoInteraction,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFFF8C00),
+                        disabledContainerColor = Color.White.copy(alpha = 0.08f),
+                        disabledContentColor = Color.White.copy(alpha = 0.3f)
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f).scale(undoScale)
+                ) {
+                    Text(
+                        text = if (state.undoUsedThisLevel) "Used" else "Undo",
+                        color = if (state.undoAvailable && state.phase == GamePhase.Idle)
+                            Color.White else Color.White.copy(alpha = 0.3f)
+                    )
+                }
+
+                // Restart button
+                Button(
+                    onClick = { viewModel.onRestartClicked() },
+                    interactionSource = restartInteraction,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFCC3333)
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f).scale(restartScale)
+                ) {
+                    Text(
+                        text = "Restart",
+                        color = Color.White
+                    )
+                }
+
+                // Back to Map button
+                Button(
+                    onClick = onBackToMap,
+                    interactionSource = mapInteraction,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.White.copy(alpha = 0.15f)
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f).scale(mapScale)
+                ) {
+                    Text(
+                        text = "Map",
+                        color = Color.White
+                    )
+                }
             }
         }
 
@@ -192,6 +368,36 @@ fun GameScreen(
             }
         }
 
+        // === Bonus Moves indicator ===
+        // Shows "BONUS MOVES!" text and remaining count during the bonus phase.
+        // The board is visible behind this so the player sees candies being destroyed.
+        if (state.bonusMoveActive && state.bonusMovesRemaining > 0) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.TopCenter
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(top = 120.dp)
+                ) {
+                    Text(
+                        text = "BONUS MOVES!",
+                        style = MaterialTheme.typography.headlineMedium.copy(
+                            fontWeight = FontWeight.ExtraBold
+                        ),
+                        color = Color(0xFFFFD700), // Gold
+                        textAlign = TextAlign.Center
+                    )
+                    Text(
+                        text = "${state.bonusMovesRemaining} left",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color.White.copy(alpha = 0.8f),
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        }
+
         // === Game Over / Level Complete overlay (animated) ===
         // The scrim fades in and the content card scales up from 70% to 100%
         if (state.phase == GamePhase.GameOver || state.phase == GamePhase.LevelComplete) {
@@ -233,27 +439,88 @@ fun GameScreen(
                     )
 
                     if (state.phase == GamePhase.LevelComplete) {
-                        // Show star rating
+                        // Show star rating using the proper StarRating composable
+                        // (replaces the old text-based asterisk display)
+                        StarRating(
+                            stars = state.stars,
+                            starSize = 40.dp
+                        )
+                    }
+
+                    // === Objective status text ===
+                    // For non-score objectives, show whether the objective was completed
+                    val objectiveStatusText = when (state.objectiveType) {
+                        is ObjectiveType.BreakAllIce -> {
+                            if (state.objectiveComplete) "All ice broken!"
+                            else "Ice: ${state.iceBroken}/${state.totalIce}"
+                        }
+                        is ObjectiveType.ClearCandyType -> {
+                            val name = state.targetCandyType?.name ?: "?"
+                            if (state.objectiveComplete) "$name goal reached!"
+                            else "$name: ${state.candiesCleared}/${state.targetCandyCount}"
+                        }
+                        else -> null // ReachScore — no extra text needed
+                    }
+
+                    if (objectiveStatusText != null) {
                         Text(
-                            text = buildString {
-                                repeat(state.stars) { append("*") }
-                                repeat(3 - state.stars) { append("-") }
-                            },
-                            style = MaterialTheme.typography.displayMedium,
-                            color = Color(0xFFFFD700)
+                            text = objectiveStatusText,
+                            style = MaterialTheme.typography.bodyLarge.copy(
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            color = if (state.objectiveComplete) Color(0xFF44DD44)
+                                else Color(0xFFFF8888)
+                        )
+                    }
+
+                    // === Feature 1: Best combo summary ===
+                    // Show the highest combo chain reached during the level
+                    if (state.maxComboReached > 0) {
+                        Text(
+                            text = "Best Combo: x${state.maxComboReached + 1}",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = Color.White.copy(alpha = 0.8f)
                         )
                     }
 
                     Spacer(modifier = Modifier.height(8.dp))
+
+                    // Continue button with bounce feedback
+                    val continueInteraction = remember { MutableInteractionSource() }
+                    val continuePressed by continueInteraction.collectIsPressedAsState()
+                    val continueScale by animateFloatAsState(
+                        targetValue = if (continuePressed) 0.92f else 1.0f,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            stiffness = Spring.StiffnessMedium
+                        ),
+                        label = "continueBounce"
+                    )
+
+                    // Build objective text for the results screen
+                    val objectiveText = when (state.objectiveType) {
+                        is ObjectiveType.BreakAllIce -> {
+                            if (state.objectiveComplete) "All ice broken!"
+                            else "Ice: ${state.iceBroken}/${state.totalIce}"
+                        }
+                        is ObjectiveType.ClearCandyType -> {
+                            val name = state.targetCandyType?.name ?: "?"
+                            if (state.objectiveComplete) "$name candies cleared!"
+                            else "$name: ${state.candiesCleared}/${state.targetCandyCount}"
+                        }
+                        else -> "" // ReachScore — no objective text needed
+                    }
 
                     Button(
                         onClick = {
                             onGameEnd(
                                 state.score,
                                 state.stars,
-                                state.phase == GamePhase.LevelComplete
+                                state.phase == GamePhase.LevelComplete,
+                                objectiveText
                             )
                         },
+                        interactionSource = continueInteraction,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = if (state.phase == GamePhase.LevelComplete) {
                                 Color(0xFF44BB44)
@@ -262,7 +529,7 @@ fun GameScreen(
                             }
                         ),
                         shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth().scale(continueScale)
                     ) {
                         Text(
                             text = "Continue",
@@ -274,5 +541,64 @@ fun GameScreen(
                 }
             }
         }
+
+        // === Tutorial Overlay ===
+        // Shown on level 1 first play to teach the player how to play
+        if (state.showTutorial) {
+            TutorialOverlay(
+                onDismiss = { viewModel.dismissTutorial() }
+            )
+        }
+
+        // === Pre-Level Dialog ===
+        // Shown before the board loads to tell the player the objective.
+        // Only shows when tutorial is NOT active (tutorial takes priority on level 1).
+        if (state.showPreLevelDialog && !state.showTutorial && state.levelConfig != null) {
+            PreLevelDialog(
+                levelNumber = state.levelNumber,
+                levelConfig = state.levelConfig!!,
+                onPlay = { viewModel.dismissPreLevelDialog() }
+            )
+        }
+    }
+
+    // === Restart Confirmation Dialog ===
+    // Shown when the player taps the Restart button
+    if (state.showRestartDialog) {
+        AlertDialog(
+            onDismissRequest = { viewModel.onRestartDismissed() },
+            title = {
+                Text(
+                    text = "Restart Level?",
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text("Your current progress on this level will be lost.")
+            },
+            confirmButton = {
+                Button(
+                    onClick = { viewModel.restartLevel() },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFCC3333)
+                    )
+                ) {
+                    Text("Restart", color = Color.White)
+                }
+            },
+            dismissButton = {
+                Button(
+                    onClick = { viewModel.onRestartDismissed() },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.White.copy(alpha = 0.15f)
+                    )
+                ) {
+                    Text("Cancel", color = Color.White)
+                }
+            },
+            containerColor = Color(0xFF2D2B55),
+            titleContentColor = Color.White,
+            textContentColor = Color.White.copy(alpha = 0.8f)
+        )
     }
 }

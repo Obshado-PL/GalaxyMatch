@@ -5,6 +5,7 @@ import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.media.SoundPool
 import android.util.Log
+import kotlin.random.Random
 
 /**
  * Manages all sound effects and background music for the game.
@@ -18,7 +19,7 @@ import android.util.Log
  *   MediaPlayer handles streaming and is better for longer audio files.
  *
  * **Sound files:** Place .ogg files in app/src/main/res/raw/ with these names:
- *   swap.ogg, match.ogg, cascade.ogg, special.ogg, win.ogg, lose.ogg, shuffle.ogg, bgm.ogg
+ *   swap.ogg, match.ogg, cascade.ogg, special.ogg, win.ogg, lose.ogg, shuffle.ogg, ice_break.ogg, bgm.ogg
  *
  * The game works fine without these files — all loading is done with runtime
  * resource lookup, so missing files won't cause crashes or compile errors.
@@ -59,6 +60,7 @@ class SoundManager(private val context: Context) {
     private val winSoundId: Int = loadSoundByName("win")
     private val loseSoundId: Int = loadSoundByName("lose")
     private val shuffleSoundId: Int = loadSoundByName("shuffle")
+    private val iceBreakSoundId: Int = loadSoundByName("ice_break")
 
     // Resource ID for background music (looked up at runtime)
     private val bgmResourceId: Int = getResourceId("bgm")
@@ -90,9 +92,21 @@ class SoundManager(private val context: Context) {
 
     /**
      * Play the match sound when candies are matched and cleared.
+     *
+     * Pitch scales with match size to reward bigger matches:
+     * - Match-3: pitch 1.0 (normal)
+     * - Match-4: pitch 1.15 (slightly higher — rewarding)
+     * - Match-5+: pitch 1.3 (noticeably higher — exciting)
+     *
+     * @param matchSize The number of candies in the largest match (default 3)
      */
-    fun playMatch() {
-        playSound(matchSoundId)
+    fun playMatch(matchSize: Int = 3) {
+        val pitch = when {
+            matchSize >= 5 -> 1.3f  // Color bomb / L-shape — exciting!
+            matchSize >= 4 -> 1.15f // Striped / wrapped — rewarding
+            else -> 1.0f           // Standard match-3
+        }
+        playSound(matchSoundId, pitch = pitch)
     }
 
     /**
@@ -109,7 +123,10 @@ class SoundManager(private val context: Context) {
      */
     fun playCascade(comboLevel: Int = 0) {
         val pitch = (1.0f + comboLevel * 0.1f).coerceAtMost(2.0f)
-        playSound(cascadeSoundId, pitch = pitch)
+        // Volume escalates from 0.7 to 1.0 over the first 4 combo levels,
+        // creating a satisfying crescendo during long chain reactions.
+        val volume = (0.7f + comboLevel * 0.075f).coerceAtMost(1.0f)
+        playSound(cascadeSoundId, volume = volume, pitch = pitch)
     }
 
     /**
@@ -138,6 +155,18 @@ class SoundManager(private val context: Context) {
      */
     fun playShuffle() {
         playSound(shuffleSoundId)
+    }
+
+    /**
+     * Play the ice break sound when ice is shattered by a match.
+     *
+     * Pitch is slightly randomized (0.9 to 1.1) so repeated ice breaks
+     * in the same cascade don't all sound identical — gives a more
+     * natural, crunchy shattering feel.
+     */
+    fun playIceBreak() {
+        val pitch = 0.9f + Random.nextFloat() * 0.2f
+        playSound(iceBreakSoundId, pitch = pitch)
     }
 
     // ===== Background Music Methods =====

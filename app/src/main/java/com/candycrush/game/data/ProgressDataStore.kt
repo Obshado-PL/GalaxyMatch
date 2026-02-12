@@ -31,6 +31,8 @@ class ProgressDataStore(private val context: Context) {
 
     companion object {
         private val HIGHEST_LEVEL_KEY = intPreferencesKey("highest_unlocked_level")
+        /** Tracks how many stars the player has spent on power-ups. */
+        private val STARS_SPENT_KEY = intPreferencesKey("stars_spent")
         private const val MAX_LEVELS = 50 // Maximum number of levels to scan when loading
     }
 
@@ -69,6 +71,30 @@ class ProgressDataStore(private val context: Context) {
      * whenever the underlying data changes. The UI observes this Flow
      * and updates automatically when progress is saved.
      */
+    /**
+     * Clear all player progress (used by the "Reset Progress" setting).
+     * After clearing, the player starts fresh — only level 1 unlocked, no stars.
+     */
+    suspend fun clearAllProgress() {
+        context.dataStore.edit { it.clear() }
+    }
+
+    /**
+     * Spend stars on a power-up.
+     *
+     * Adds the given amount to the running total of stars spent.
+     * The caller should verify the player has enough available stars
+     * BEFORE calling this (availableStars >= amount).
+     *
+     * @param amount Number of stars to spend
+     */
+    suspend fun spendStars(amount: Int) {
+        context.dataStore.edit { prefs ->
+            val currentSpent = prefs[STARS_SPENT_KEY] ?: 0
+            prefs[STARS_SPENT_KEY] = currentSpent + amount
+        }
+    }
+
     fun getProgress(): Flow<PlayerProgress> {
         return context.dataStore.data.map { prefs ->
             val highest = prefs[HIGHEST_LEVEL_KEY] ?: 1
@@ -83,7 +109,8 @@ class ProgressDataStore(private val context: Context) {
             PlayerProgress(
                 highestUnlockedLevel = highest,
                 levelStars = levelStars,
-                levelScores = levelScores
+                levelScores = levelScores,
+                starsSpent = prefs[STARS_SPENT_KEY] ?: 0
             )
         }
     }
