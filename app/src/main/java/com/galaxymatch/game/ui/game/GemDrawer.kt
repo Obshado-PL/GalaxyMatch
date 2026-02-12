@@ -653,8 +653,9 @@ fun DrawScope.drawBomb(
         isFakeBoldText = true
         isAntiAlias = true
     }
+    // Clamp to 0 minimum so a negative timer is never displayed
     drawContext.canvas.nativeCanvas.drawText(
-        timer.toString(),
+        maxOf(0, timer).toString(),
         center.x,
         center.y + radius * 0.3f,
         paint

@@ -186,7 +186,7 @@ class GameEngine(private val levelConfig: LevelConfig) {
 
         // === Decrement all bomb timers ===
         if (board.bombs.isNotEmpty()) {
-            val updatedBombs = board.bombs.mapValues { (_, timer) -> timer - 1 }
+            val updatedBombs = board.bombs.mapValues { (_, timer) -> maxOf(0, timer - 1) }
             board = BoardState(board.rows, board.cols, board.grid, board.obstacles, updatedBombs)
             if (updatedBombs.any { it.value <= 0 }) {
                 // A bomb exploded! Game over.
@@ -219,7 +219,7 @@ class GameEngine(private val levelConfig: LevelConfig) {
 
         // === Decrement all bomb timers ===
         if (board.bombs.isNotEmpty()) {
-            val updatedBombs = board.bombs.mapValues { (_, timer) -> timer - 1 }
+            val updatedBombs = board.bombs.mapValues { (_, timer) -> maxOf(0, timer - 1) }
             board = BoardState(board.rows, board.cols, board.grid, board.obstacles, updatedBombs)
             if (updatedBombs.any { it.value <= 0 }) {
                 phase = GamePhase.GameOver
