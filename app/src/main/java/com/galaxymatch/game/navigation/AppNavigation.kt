@@ -21,6 +21,7 @@ import com.galaxymatch.game.ui.statistics.StatisticsScreen
 import com.galaxymatch.game.ui.dailychallenge.DailyChallengeScreen
 import com.galaxymatch.game.ui.achievements.AchievementsScreen
 import com.galaxymatch.game.ui.timedchallenge.TimedChallengeScreen
+import com.galaxymatch.game.ui.help.HelpScreen
 
 /** Duration for all screen transitions (300ms with smooth deceleration) */
 private const val NAV_ANIM_DURATION = 300
@@ -125,6 +126,9 @@ fun AppNavigation() {
                 },
                 onTimedChallengeClicked = {
                     navController.navigate(TimedChallengeRoute)
+                },
+                onHelpClicked = {
+                    navController.navigate(HelpRoute)
                 }
             )
         }
@@ -158,6 +162,15 @@ fun AppNavigation() {
                     // levelNumber = -(100 + difficultyOrdinal) is the sentinel for timed mode
                     navController.navigate(GameRoute(-(100 + difficultyOrdinal)))
                 },
+                onBack = {
+                    navController.popBackStack(LevelMapRoute, inclusive = false)
+                }
+            )
+        }
+
+        // ===== Help Screen =====
+        composable<HelpRoute> {
+            HelpScreen(
                 onBack = {
                     navController.popBackStack(LevelMapRoute, inclusive = false)
                 }

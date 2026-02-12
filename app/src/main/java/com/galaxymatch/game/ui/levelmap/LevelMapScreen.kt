@@ -40,7 +40,8 @@ fun LevelMapScreen(
     onStatsClicked: () -> Unit,
     onDailyChallengeClicked: () -> Unit = {},
     onAchievementsClicked: () -> Unit = {},
-    onTimedChallengeClicked: () -> Unit = {}
+    onTimedChallengeClicked: () -> Unit = {},
+    onHelpClicked: () -> Unit = {}
 ) {
     val viewModel = remember { LevelMapViewModel() }
     val state by viewModel.uiState.collectAsState()
@@ -82,6 +83,21 @@ fun LevelMapScreen(
             Row(
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                // Help button
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.15f))
+                        .bounceClick(onClick = onHelpClicked),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "\u2753", // Question mark emoji
+                        fontSize = 18.sp,
+                        color = Color.White
+                    )
+                }
                 // Daily Challenge button
                 Box(
                     modifier = Modifier

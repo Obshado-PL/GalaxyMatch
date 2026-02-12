@@ -22,6 +22,7 @@ import com.galaxymatch.game.ui.components.GameButton
 import com.galaxymatch.game.ui.components.drawStar
 import com.galaxymatch.game.ui.components.GalaxyBackground
 import com.galaxymatch.game.ui.theme.GameBackground
+import com.galaxymatch.game.model.TimedDifficulty
 import com.galaxymatch.game.ui.theme.StarEmpty
 import com.galaxymatch.game.ui.theme.StarGold
 import kotlinx.coroutines.delay
@@ -55,7 +56,14 @@ fun ResultsScreen(
     onNextLevel: () -> Unit,
     onBackToMap: () -> Unit
 ) {
-    val hasNext = ResultsHelper.hasNextLevel(levelNumber)
+    // === Detect special modes from sentinel level numbers ===
+    val isDailyChallenge = levelNumber == -1
+    val isTimedMode = levelNumber <= -100
+    val timedDifficulty: TimedDifficulty? =
+        if (isTimedMode) TimedDifficulty.entries.getOrNull(-(levelNumber + 100)) else null
+    val isSpecialMode = isDailyChallenge || isTimedMode
+
+    val hasNext = !isSpecialMode && ResultsHelper.hasNextLevel(levelNumber)
 
     Box(
         modifier = Modifier
@@ -74,8 +82,17 @@ fun ResultsScreen(
             verticalArrangement = Arrangement.Center
         ) {
         // === Win/Lose Title ===
+        // Special modes get tailored titles instead of generic "Level Complete!"
+        val titleText = when {
+            isTimedMode && won -> "Time's Up!"
+            isTimedMode -> "Time's Up!"
+            isDailyChallenge && won -> "Challenge Complete!"
+            isDailyChallenge -> "Try Again!"
+            won -> "Level Complete!"
+            else -> "Try Again!"
+        }
         Text(
-            text = if (won) "Level Complete!" else "Try Again!",
+            text = titleText,
             style = MaterialTheme.typography.displayMedium.copy(
                 fontWeight = FontWeight.ExtraBold
             ),
@@ -85,8 +102,14 @@ fun ResultsScreen(
 
         Spacer(modifier = Modifier.height(8.dp))
 
+        // Show appropriate subtitle for each mode
+        val subtitleText = when {
+            isTimedMode -> "\u23F1 Timed Challenge — ${timedDifficulty?.label ?: "Unknown"}"
+            isDailyChallenge -> "\uD83D\uDCC5 Daily Challenge"
+            else -> "Level $levelNumber"
+        }
         Text(
-            text = "Level $levelNumber",
+            text = subtitleText,
             style = MaterialTheme.typography.headlineMedium,
             color = Color.White.copy(alpha = 0.7f)
         )

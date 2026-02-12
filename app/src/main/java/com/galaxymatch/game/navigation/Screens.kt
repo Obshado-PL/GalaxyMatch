@@ -47,6 +47,10 @@ object AchievementsRoute
 @Serializable
 object TimedChallengeRoute
 
+/** The help screen explaining game mechanics, obstacles, and power-ups */
+@Serializable
+object HelpRoute
+
 /** The results screen shown after completing or failing a level */
 @Serializable
 data class ResultsRoute(
