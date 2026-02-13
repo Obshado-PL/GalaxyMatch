@@ -4,8 +4,6 @@ import android.content.Context
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.media.SoundPool
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
 import kotlin.random.Random
 
@@ -84,18 +82,6 @@ class SoundManager(private val context: Context) {
 
     /** When true, background music is muted */
     var isMusicMuted: Boolean = false
-
-    // ===== Volume Ducking =====
-    // Temporarily lowers BGM volume when SFX plays, so sound effects
-    // punch through the music clearly. Uses a Handler to restore volume
-    // after a brief delay, avoiding the need for a coroutine scope.
-    // Rapid SFX playback (like cascading matches) keeps BGM ducked until
-    // things settle down — the restore timer resets each time.
-    private val duckHandler = Handler(Looper.getMainLooper())
-    private var isDucked = false
-    private val BGM_NORMAL_VOLUME = 0.4f
-    private val BGM_DUCKED_VOLUME = 0.15f
-    private val DUCK_RESTORE_DELAY_MS = 300L
 
     // ===== Sound Effect Playback Methods =====
 
@@ -382,7 +368,6 @@ class SoundManager(private val context: Context) {
      * MUST be called when the Activity is destroyed to prevent memory leaks.
      */
     fun release() {
-        duckHandler.removeCallbacksAndMessages(null)
         soundPool.release()
         stopBackgroundMusic()
     }
@@ -433,9 +418,6 @@ class SoundManager(private val context: Context) {
     private fun playSound(soundId: Int, volume: Float = 1.0f, pitch: Float = 1.0f) {
         if (isSfxMuted || soundId == 0) return
 
-        // Duck the background music so the SFX punches through clearly
-        duckBgm()
-
         try {
             soundPool.play(
                 soundId,
@@ -451,36 +433,4 @@ class SoundManager(private val context: Context) {
         }
     }
 
-    /**
-     * Temporarily duck (lower) the BGM volume when a sound effect plays.
-     *
-     * If already ducked, resets the restore timer so rapid SFX playback
-     * (like cascading matches) keeps the BGM ducked until things settle.
-     * Volume restores automatically after [DUCK_RESTORE_DELAY_MS].
-     */
-    private fun duckBgm() {
-        if (isMusicMuted || currentBgmPlayer == null) return
-
-        // Remove any pending restore — we're extending the duck period
-        duckHandler.removeCallbacksAndMessages(null)
-
-        if (!isDucked) {
-            isDucked = true
-            try {
-                currentBgmPlayer?.setVolume(BGM_DUCKED_VOLUME, BGM_DUCKED_VOLUME)
-            } catch (e: Exception) {
-                Log.w(TAG, "Error ducking BGM: ${e.message}")
-            }
-        }
-
-        // Schedule volume restore after the delay
-        duckHandler.postDelayed({
-            isDucked = false
-            try {
-                currentBgmPlayer?.setVolume(BGM_NORMAL_VOLUME, BGM_NORMAL_VOLUME)
-            } catch (e: Exception) {
-                Log.w(TAG, "Error restoring BGM volume: ${e.message}")
-            }
-        }, DUCK_RESTORE_DELAY_MS)
-    }
 }
