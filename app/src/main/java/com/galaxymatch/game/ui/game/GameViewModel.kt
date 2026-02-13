@@ -333,9 +333,15 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
             }
 
             // === Phase 3: Valid swap — run the cascade loop ===
-            // Mark undo as available since we have a valid snapshot
+            // Mark undo as available since we have a valid snapshot.
+            // IMPORTANT: Sync board = engine.board here so the UI reflects
+            // any immediate changes (Color Bomb clears, special combos).
+            // Without this, cleared gems briefly snap back to their old
+            // positions because the swap animation ends but the board
+            // state hasn't been updated yet.
             _uiState.update {
                 it.copy(
+                    board = engine.board,
                     swapAction = null,
                     swapProgress = 0f,
                     movesRemaining = engine.movesRemaining,
