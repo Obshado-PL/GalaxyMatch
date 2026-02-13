@@ -177,6 +177,12 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
         powerUpsThisGame = 0
         gemColorCountsThisGame.clear()
 
+        // Preserve accessibility settings across level restarts.
+        // loadSettings() runs once in init{}, but startLevel() resets the state.
+        // Without preserving these, settings revert to defaults when the board loads.
+        val currentColorblindMode = _uiState.value.colorblindMode
+        val currentHighContrastMode = _uiState.value.highContrastMode
+
         _uiState.value = GameUiState(
             board = board,
             score = 0,
@@ -203,7 +209,10 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
             objectiveComplete = false,
             isTimedMode = isTimedMode,
             isDailyChallenge = isDailyChallenge,
-            timeRemaining = timedDifficulty?.seconds ?: 0
+            timeRemaining = timedDifficulty?.seconds ?: 0,
+            // === Preserve accessibility settings ===
+            colorblindMode = currentColorblindMode,
+            highContrastMode = currentHighContrastMode
         )
 
         // Animate gems dropping in from above over 800ms

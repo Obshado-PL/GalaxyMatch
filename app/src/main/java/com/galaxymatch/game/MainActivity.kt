@@ -4,8 +4,11 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import com.galaxymatch.game.navigation.AppNavigation
 import com.galaxymatch.game.ui.theme.GalaxyMatchTheme
+import kotlinx.coroutines.flow.map
 
 /**
  * The single Activity for the entire app.
@@ -18,6 +21,10 @@ import com.galaxymatch.game.ui.theme.GalaxyMatchTheme
  * - Pauses background music when the app goes to background (onPause)
  * - Resumes background music when the app comes back (onResume)
  * - Releases all audio resources when the Activity is destroyed (onDestroy)
+ *
+ * Font size scaling: The theme reads the player's font size preference from
+ * DataStore and passes it to GalaxyMatchTheme, which overrides LocalDensity's
+ * fontScale. This scales all `sp` text sizes app-wide.
  */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -26,7 +33,14 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         // Set the Compose UI content
         setContent {
-            GalaxyMatchTheme {
+            // Observe the font size level from settings DataStore.
+            // Defaults to 1 (Normal) while loading or on first launch.
+            val fontSizeLevel by ServiceLocator.settingsRepository
+                .getSettings()
+                .map { it.fontSizeLevel }
+                .collectAsState(initial = 1)
+
+            GalaxyMatchTheme(fontSizeLevel = fontSizeLevel) {
                 AppNavigation()
             }
         }
