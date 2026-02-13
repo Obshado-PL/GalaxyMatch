@@ -169,6 +169,17 @@ class GameEngine(private val levelConfig: LevelConfig) {
             return processSpecialCombo(gem1, from, gem2, to)
         }
 
+        // === Color Bomb + Regular Gem swap ===
+        // In classic Match-3, swiping a Color Bomb with ANY regular gem
+        // immediately clears ALL gems of that color — no match required.
+        // Check if exactly one gem is a ColorBomb and the other is regular.
+        if (gem1.special == SpecialType.ColorBomb && gem2.special == SpecialType.None) {
+            return processColorBombSwap(colorBombPos = from, targetPos = to, targetType = gem2.type)
+        }
+        if (gem2.special == SpecialType.ColorBomb && gem1.special == SpecialType.None) {
+            return processColorBombSwap(colorBombPos = to, targetPos = from, targetType = gem1.type)
+        }
+
         // Perform the swap
         board.swap(from, to)
 
@@ -244,6 +255,79 @@ class GameEngine(private val levelConfig: LevelConfig) {
         score += comboPositions.size * 60
 
         lastSpecialActivations = comboPositions
+        phase = GamePhase.Cascading
+
+        return true
+    }
+
+    /**
+     * Handle the case where a Color Bomb is swapped with a regular gem.
+     *
+     * This is the classic Match-3 Color Bomb behavior: swiping a Color Bomb
+     * with any regular gem clears ALL gems of that color from the board.
+     * No 3-match is required — the swap itself triggers the effect.
+     *
+     * Also handles chain reactions: if any cleared gem is itself a special,
+     * its effect activates too (e.g., clearing a striped gem triggers its row/col).
+     *
+     * This follows the same pattern as processSpecialCombo(): clear gems, set
+     * phase to Cascading, and let the cascade loop handle gravity + cascading.
+     *
+     * @param colorBombPos The position of the Color Bomb gem
+     * @param targetPos The position of the regular gem (determines which color to clear)
+     * @param targetType The GemType of the regular gem (the color to clear)
+     * @return True always (Color Bomb swaps are always valid)
+     */
+    private fun processColorBombSwap(
+        colorBombPos: Position,
+        targetPos: Position,
+        targetType: GemType
+    ): Boolean {
+        movesRemaining--
+
+        // === Decrement all bomb timers ===
+        if (board.bombs.isNotEmpty()) {
+            val updatedBombs = board.bombs.mapValues { (_, timer) -> maxOf(0, timer - 1) }
+            board = BoardState(board.rows, board.cols, board.grid, board.obstacles, updatedBombs)
+            if (updatedBombs.any { it.value <= 0 }) {
+                phase = GamePhase.GameOver
+                return true
+            }
+        }
+
+        comboCount = 0
+
+        // Collect all positions to clear: the Color Bomb itself + all gems of the target color
+        val clearedPositions = mutableSetOf<Position>()
+        clearedPositions.add(colorBombPos) // The Color Bomb is consumed
+
+        for (row in 0 until board.rows) {
+            for (col in 0 until board.cols) {
+                val pos = Position(row, col)
+                val gem = board.gemAt(pos)
+                if (gem != null && gem.type == targetType) {
+                    // If this gem is itself a special, activate its effect (chain reaction!)
+                    if (gem.special != SpecialType.None) {
+                        val effectPositions = specialEffects.activate(gem, pos, board)
+                        clearedPositions.addAll(effectPositions)
+                    }
+                    clearedPositions.add(pos)
+                }
+            }
+        }
+
+        // === Track clears for objectives (before removing gems from the grid) ===
+        objectiveTracker.recordSpecialClears(clearedPositions, board)
+
+        // Clear all affected positions from the board
+        for (pos in clearedPositions) {
+            board.setGem(pos, null)
+        }
+
+        // Score based on gems cleared (same rate as special combo: 60 per gem)
+        score += clearedPositions.size * 60
+
+        lastSpecialActivations = clearedPositions
         phase = GamePhase.Cascading
 
         return true
