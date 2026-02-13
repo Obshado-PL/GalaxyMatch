@@ -30,9 +30,11 @@ local.properties
 Thumbs.db
 nul
 
-# Keystore files (security)
+# Keystore files (security — NEVER commit these!)
 *.jks
 *.keystore
+keystore.properties
+keystore/
 
 # Log files
 *.log
