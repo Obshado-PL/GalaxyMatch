@@ -78,7 +78,7 @@ fun TimedChallengeScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "Score as high as you can before time runs out!\nCombos add bonus seconds.",
+                text = "Score as high as you can before time runs out!",
                 color = Color.White.copy(alpha = 0.7f),
                 fontSize = 14.sp,
                 textAlign = TextAlign.Center

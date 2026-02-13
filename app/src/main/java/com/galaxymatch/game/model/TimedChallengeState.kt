@@ -16,7 +16,7 @@ data class TimedChallengeState(
  * Timed challenge difficulty tiers.
  *
  * Each tier has a different starting time, making harder difficulties
- * require more efficient play and combo-chaining for time bonuses.
+ * require more efficient play to maximize score before time runs out.
  *
  * @param seconds Starting countdown time in seconds
  * @param label Display name for the difficulty

@@ -610,11 +610,6 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
                 )
             }
 
-            // === Timed mode: award time bonus for combos ===
-            if (isTimedMode && engine.comboCount > 0) {
-                awardTimeBonus(engine.comboCount)
-            }
-
             // If no more matches, the cascade is done
             if (!result.hasMoreMatches) break
         }
@@ -1378,7 +1373,6 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
     /**
      * Start the 1-second countdown for timed challenge mode.
      * Decrements timeRemaining every second. On reaching 0, triggers game over.
-     * Awards time bonus after cascades based on combo count.
      */
     private fun startTimedCountdown() {
         timerJob?.cancel()
@@ -1414,25 +1408,6 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
         }
     }
 
-    /**
-     * Award time bonus after a cascade in timed mode.
-     * Each combo level beyond 0 adds 2 seconds.
-     */
-    private fun awardTimeBonus(comboCount: Int) {
-        if (!isTimedMode || comboCount <= 0) return
-        val bonus = comboCount * 2
-        _uiState.update {
-            it.copy(
-                timeRemaining = it.timeRemaining + bonus,
-                timeBonusPopup = bonus
-            )
-        }
-        // Clear the popup after a brief delay
-        viewModelScope.launch {
-            delay(800L)
-            _uiState.update { it.copy(timeBonusPopup = 0) }
-        }
-    }
 
     // ===== Achievement System Integration =====
 
@@ -1605,8 +1580,6 @@ data class GameUiState(
     val isTimedMode: Boolean = false,
     /** Seconds remaining in the countdown (timed mode only). */
     val timeRemaining: Int = 0,
-    /** Time bonus popup value (e.g., +4s). 0 = no popup. */
-    val timeBonusPopup: Int = 0,
 
     // === Achievement System ===
     /** Achievement just unlocked (emoji + title text). Null = no toast. */

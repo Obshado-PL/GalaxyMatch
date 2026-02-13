@@ -206,7 +206,7 @@ fun HelpScreen(
                         HelpItem(
                             emoji = "\u23F1",
                             title = "Timed Challenge",
-                            description = "Score as high as you can before time runs out! Choose Easy (120s), Medium (90s), or Hard (60s). Combos add bonus time!"
+                            description = "Score as high as you can before time runs out! Choose Easy (120s), Medium (90s), or Hard (60s)."
                         )
                     )
                 )
