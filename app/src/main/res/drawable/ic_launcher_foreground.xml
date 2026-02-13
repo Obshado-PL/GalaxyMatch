@@ -1,35 +1,132 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- A galaxy-themed foreground icon: gem diamond shape with a "G" letter -->
+<!--
+    Galaxy Match app icon foreground: a multi-faceted crystal gem
+    with cosmic glow ring and sparkle accents.
+    Designed within the adaptive icon safe zone (center 66dp of 108dp).
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Background glow circle (deep space purple) -->
+    <!-- === Outer glow ring (cosmic energy) === -->
+    <!-- Diffuse outer glow (large, very transparent) -->
+    <path
+        android:fillColor="#1A7B68EE"
+        android:pathData="M54,54m-32,0a32,32 0,1 1,64 0a32,32 0,1 1,-64 0" />
+    <!-- Inner glow ring (brighter, tighter) -->
+    <path
+        android:fillColor="#2A6A5ACD"
+        android:pathData="M54,54m-26,0a26,26 0,1 1,52 0a26,26 0,1 1,-52 0" />
+    <!-- Core glow (brightest, small) -->
+    <path
+        android:fillColor="#3300CED1"
+        android:pathData="M54,54m-20,0a20,20 0,1 1,40 0a20,20 0,1 1,-40 0" />
+
+    <!-- === Main gem body: crown (top) + pavilion (bottom) === -->
+
+    <!-- Gem shadow/depth (offset slightly down) -->
+    <path
+        android:fillColor="#33000000"
+        android:pathData="M54,30 L74,54 L54,78 L34,54 Z" />
+
+    <!-- Gem body — main shape (rich purple) -->
     <path
         android:fillColor="#6A5ACD"
-        android:pathData="M54,54m-28,0a28,28 0,1 1,56 0a28,28 0,1 1,-56 0" />
+        android:pathData="M54,28 L73,53 L54,76 L35,53 Z" />
 
-    <!-- Inner gem diamond shape (medium slate blue) -->
+    <!-- Crown — top facets (lighter purple, catches the light) -->
     <path
         android:fillColor="#7B68EE"
-        android:pathData="M54,30 L72,54 L54,74 L36,54 Z" />
+        android:pathData="M54,28 L73,53 L54,48 L35,53 Z" />
 
-    <!-- Gem top facet highlight (lighter) -->
+    <!-- Crown — left highlight facet -->
+    <path
+        android:fillColor="#8B7BFF"
+        android:pathData="M54,28 L44,42 L35,53 Z" />
+
+    <!-- Crown — right shadow facet (slightly darker) -->
+    <path
+        android:fillColor="#5A4ABD"
+        android:pathData="M54,28 L64,42 L73,53 Z" />
+
+    <!-- Table — center horizontal facet (brightest, like a window) -->
     <path
         android:fillColor="#9B8BFF"
-        android:pathData="M54,30 L72,54 L54,50 L36,54 Z" />
+        android:pathData="M44,42 L64,42 L73,53 L54,48 L35,53 Z" />
 
-    <!-- Gloss highlight on gem -->
+    <!-- Pavilion — bottom left facet (blue-purple, deeper) -->
     <path
-        android:fillColor="#40FFFFFF"
-        android:pathData="M44,40 L54,30 L62,42 L50,46 Z" />
+        android:fillColor="#4A3AAD"
+        android:pathData="M35,53 L54,48 L54,76 Z" />
 
-    <!-- Letter G for Galaxy (stroke only) -->
+    <!-- Pavilion — bottom right facet (teal accent) -->
+    <path
+        android:fillColor="#3A6A8D"
+        android:pathData="M73,53 L54,48 L54,76 Z" />
+
+    <!-- Pavilion bottom-left sub-facet (color variation) -->
+    <path
+        android:fillColor="#5548B8"
+        android:pathData="M35,53 L54,63 L54,76 Z" />
+
+    <!-- Pavilion bottom-right sub-facet (teal shift) -->
+    <path
+        android:fillColor="#2A8A9A"
+        android:pathData="M73,53 L54,63 L54,76 Z" />
+
+    <!-- Edge highlights (thin bright lines along facet edges) -->
     <path
         android:fillColor="#00000000"
-        android:pathData="M62,46a10,10 0,1 0,-2 16 L60,55 L66,55"
-        android:strokeWidth="3"
-        android:strokeColor="#FFFFFF" />
+        android:pathData="M54,28 L73,53 L54,76 L35,53 Z"
+        android:strokeWidth="0.8"
+        android:strokeColor="#55AABBFF" />
+
+    <!-- Table edge highlight -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M44,42 L64,42"
+        android:strokeWidth="0.6"
+        android:strokeColor="#55FFFFFF" />
+
+    <!-- Center vertical line (pavilion division) -->
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M54,48 L54,76"
+        android:strokeWidth="0.5"
+        android:strokeColor="#33FFFFFF" />
+
+    <!-- === Gloss / light reflection (top-left shine) === -->
+    <path
+        android:fillColor="#40FFFFFF"
+        android:pathData="M43,36 L54,28 L58,34 L47,41 Z" />
+
+    <!-- Smaller secondary gloss -->
+    <path
+        android:fillColor="#25FFFFFF"
+        android:pathData="M40,46 L44,42 L48,45 L44,48 Z" />
+
+    <!-- === Sparkle accents (4-pointed stars around the gem) === -->
+
+    <!-- Top-right sparkle (bright white) -->
+    <path
+        android:fillColor="#EEFFFFFF"
+        android:pathData="M72,32 L73,34 L75,35 L73,36 L72,38 L71,36 L69,35 L71,34 Z" />
+
+    <!-- Bottom-left sparkle (teal tinted) -->
+    <path
+        android:fillColor="#CC00CED1"
+        android:pathData="M32,68 L33,70 L35,71 L33,72 L32,74 L31,72 L29,71 L31,70 Z" />
+
+    <!-- Top-left tiny sparkle -->
+    <path
+        android:fillColor="#BBFFFFFF"
+        android:pathData="M36,33 L36.5,34 L37.5,34.5 L36.5,35 L36,36 L35.5,35 L34.5,34.5 L35.5,34 Z" />
+
+    <!-- Bottom-right tiny sparkle (purple tinted) -->
+    <path
+        android:fillColor="#AA9B8BFF"
+        android:pathData="M74,65 L74.5,66 L75.5,66.5 L74.5,67 L74,68 L73.5,67 L72.5,66.5 L73.5,66 Z" />
+
 </vector>
