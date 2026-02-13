@@ -249,8 +249,12 @@ fun AppNavigation() {
                     }
                 },
                 onNextLevel = {
-                    navController.navigate(GameRoute(route.levelNumber + 1)) {
-                        popUpTo(LevelMapRoute)
+                    // Guard: only navigate to next level for normal levels (positive IDs).
+                    // Special modes use negative sentinels (-1 = daily, -100+ = timed).
+                    if (route.levelNumber > 0) {
+                        navController.navigate(GameRoute(route.levelNumber + 1)) {
+                            popUpTo(LevelMapRoute)
+                        }
                     }
                 },
                 onBackToMap = {

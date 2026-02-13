@@ -796,15 +796,40 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
         sound.playLevelComplete()
         haptic.vibrateLevelComplete()
 
-        // Save progress and statistics
-        viewModelScope.launch {
-            ServiceLocator.progressRepository.saveProgress(
-                levelNumber = levelNumber,
-                stars = stars,
-                score = engine.score
-            )
+        // Save progress (skip for special modes — they use negative sentinel level numbers)
+        if (!isDailyChallenge && !isTimedMode) {
+            viewModelScope.launch {
+                ServiceLocator.progressRepository.saveProgress(
+                    levelNumber = levelNumber,
+                    stars = stars,
+                    score = engine.score
+                )
+            }
         }
+
+        // Daily challenge: mark completed so streak is tracked
+        if (isDailyChallenge) {
+            viewModelScope.launch {
+                ServiceLocator.dailyChallengeRepository.markCompleted(engine.score)
+            }
+        }
+
+        // Timed mode: save best score and stop countdown timer
+        if (isTimedMode) {
+            timerJob?.cancel()
+            val diff = timedDifficulty
+            if (diff != null) {
+                viewModelScope.launch {
+                    ServiceLocator.timedChallengeRepository.saveBestScore(diff, engine.score)
+                }
+            }
+        }
+
+        // Save statistics (win or lose, all modes)
         saveStatistics()
+
+        // Check achievements (all modes)
+        checkAchievements()
 
         _uiState.update {
             it.copy(
@@ -1038,21 +1063,40 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
                     } else {
                         // No cascades — check end condition and return to idle
                         val endPhase = engine.evaluateEndCondition()
-                        if (endPhase == GamePhase.LevelComplete || endPhase == GamePhase.GameOver) {
+                        if (endPhase == GamePhase.BonusMoves) {
+                            // Non-score objective completed with remaining moves!
+                            runBonusMoveLoop()
+                        } else if (endPhase == GamePhase.LevelComplete || endPhase == GamePhase.GameOver) {
                             val stars = engine.getStarRating()
                             if (endPhase == GamePhase.LevelComplete) {
                                 sound.playLevelComplete()
                                 haptic.vibrateLevelComplete()
-                                ServiceLocator.progressRepository.saveProgress(
-                                    levelNumber = levelNumber,
-                                    stars = stars,
-                                    score = engine.score
-                                )
+                                // Only save progress for normal levels (skip special modes)
+                                if (!isDailyChallenge && !isTimedMode) {
+                                    ServiceLocator.progressRepository.saveProgress(
+                                        levelNumber = levelNumber,
+                                        stars = stars,
+                                        score = engine.score
+                                    )
+                                }
+                                // Daily challenge: mark completed
+                                if (isDailyChallenge) {
+                                    ServiceLocator.dailyChallengeRepository.markCompleted(engine.score)
+                                }
+                                // Timed mode: save best score
+                                if (isTimedMode) {
+                                    timerJob?.cancel()
+                                    val diff = timedDifficulty
+                                    if (diff != null) {
+                                        ServiceLocator.timedChallengeRepository.saveBestScore(diff, engine.score)
+                                    }
+                                }
                             } else {
                                 sound.playGameOver()
                                 haptic.vibrateGameOver()
                             }
                             saveStatistics()
+                            checkAchievements()
                             _uiState.update {
                                 it.copy(phase = endPhase, stars = stars)
                             }

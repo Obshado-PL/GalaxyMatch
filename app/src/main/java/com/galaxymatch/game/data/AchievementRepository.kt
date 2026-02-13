@@ -65,7 +65,7 @@ class AchievementRepository(private val dataStore: AchievementDataStore) {
             is AchievementCriteria.TotalScore ->
                 stats.totalScore >= criteria.threshold
             is AchievementCriteria.LevelsCompleted ->
-                (progress.highestUnlockedLevel - 1) >= criteria.threshold
+                progress.levelStars.size >= criteria.threshold
             is AchievementCriteria.PerfectLevels ->
                 progress.levelStars.count { it.value >= 3 } >= criteria.count
             is AchievementCriteria.SpecialGemsCreated ->
@@ -96,9 +96,10 @@ class AchievementRepository(private val dataStore: AchievementDataStore) {
             is AchievementCriteria.ComboReached ->
                 stats.bestCombo to criteria.threshold
             is AchievementCriteria.TotalScore ->
-                stats.totalScore.toInt() to criteria.threshold.toInt()
+                stats.totalScore.coerceAtMost(Int.MAX_VALUE.toLong()).toInt() to
+                    criteria.threshold.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
             is AchievementCriteria.LevelsCompleted ->
-                (progress.highestUnlockedLevel - 1) to criteria.threshold
+                progress.levelStars.size to criteria.threshold
             is AchievementCriteria.PerfectLevels ->
                 progress.levelStars.count { it.value >= 3 } to criteria.count
             is AchievementCriteria.SpecialGemsCreated ->

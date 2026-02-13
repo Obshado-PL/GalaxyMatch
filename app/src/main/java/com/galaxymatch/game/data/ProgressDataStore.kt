@@ -101,7 +101,10 @@ class ProgressDataStore(private val context: Context) {
             val levelStars = mutableMapOf<Int, Int>()
             val levelScores = mutableMapOf<Int, Int>()
 
-            for (i in 1..MAX_LEVELS) {
+            // Scan up to the highest unlocked level (not a fixed cap).
+            // This ensures procedurally generated levels beyond 50 are loaded.
+            val scanLimit = maxOf(highest, MAX_LEVELS)
+            for (i in 1..scanLimit) {
                 prefs[intPreferencesKey("level_${i}_stars")]?.let { levelStars[i] = it }
                 prefs[intPreferencesKey("level_${i}_score")]?.let { levelScores[i] = it }
             }

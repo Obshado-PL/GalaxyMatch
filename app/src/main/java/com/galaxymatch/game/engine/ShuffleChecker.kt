@@ -1,6 +1,7 @@
 package com.galaxymatch.game.engine
 
 import com.galaxymatch.game.model.BoardState
+import com.galaxymatch.game.model.Gem
 import com.galaxymatch.game.model.Position
 import com.galaxymatch.game.model.SwapAction
 
@@ -43,12 +44,14 @@ class ShuffleChecker(private val matchDetector: MatchDetector) {
 
                 // Skip stone positions — can't swap from a stone wall
                 if (board.isStone(pos1)) continue
+                // Skip locked positions — locked gems can't be swapped by the player
+                if (board.isLocked(pos1)) continue
 
                 // Try swapping with the right neighbor
                 if (col + 1 < board.cols) {
                     val pos2 = Position(row, col + 1)
-                    // Skip if neighbor is a stone — can't swap with a wall
-                    if (!board.isStone(pos2) && wouldMatch(board, pos1, pos2)) {
+                    // Skip if neighbor is a stone or locked — can't swap with those
+                    if (!board.isStone(pos2) && !board.isLocked(pos2) && wouldMatch(board, pos1, pos2)) {
                         return SwapAction(pos1, pos2)
                     }
                 }
@@ -56,7 +59,7 @@ class ShuffleChecker(private val matchDetector: MatchDetector) {
                 // Try swapping with the bottom neighbor
                 if (row + 1 < board.rows) {
                     val pos2 = Position(row + 1, col)
-                    if (!board.isStone(pos2) && wouldMatch(board, pos1, pos2)) {
+                    if (!board.isStone(pos2) && !board.isLocked(pos2) && wouldMatch(board, pos1, pos2)) {
                         return SwapAction(pos1, pos2)
                     }
                 }
@@ -72,17 +75,19 @@ class ShuffleChecker(private val matchDetector: MatchDetector) {
 
                 // Skip stone positions — can't swap from a stone wall
                 if (board.isStone(pos1)) continue
+                // Skip locked positions — locked gems can't be swapped by the player
+                if (board.isLocked(pos1)) continue
 
                 // Try swapping with the right neighbor
                 if (col + 1 < board.cols) {
                     val pos2 = Position(row, col + 1)
-                    if (!board.isStone(pos2) && wouldMatch(board, pos1, pos2)) return true
+                    if (!board.isStone(pos2) && !board.isLocked(pos2) && wouldMatch(board, pos1, pos2)) return true
                 }
 
                 // Try swapping with the bottom neighbor
                 if (row + 1 < board.rows) {
                     val pos2 = Position(row + 1, col)
-                    if (!board.isStone(pos2) && wouldMatch(board, pos1, pos2)) return true
+                    if (!board.isStone(pos2) && !board.isLocked(pos2) && wouldMatch(board, pos1, pos2)) return true
                 }
             }
         }
@@ -122,11 +127,11 @@ class ShuffleChecker(private val matchDetector: MatchDetector) {
      */
     fun shuffleBoard(board: BoardState) {
         // Collect all non-null gems (skip stone positions — they have no gem)
-        val allGems = mutableListOf<com.galaxymatch.game.model.Gem>()
-        val playablePositions = mutableListOf<com.galaxymatch.game.model.Position>()
+        val allGems = mutableListOf<Gem>()
+        val playablePositions = mutableListOf<Position>()
         for (row in 0 until board.rows) {
             for (col in 0 until board.cols) {
-                val pos = com.galaxymatch.game.model.Position(row, col)
+                val pos = Position(row, col)
                 // Only collect gems from non-stone positions
                 if (!board.isStone(pos)) {
                     board.grid[row][col]?.let { allGems.add(it) }

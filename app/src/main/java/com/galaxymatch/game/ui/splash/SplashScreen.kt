@@ -46,11 +46,12 @@ fun SplashScreen(onSplashComplete: () -> Unit) {
                 easing = FastOutSlowInEasing
             )
         )
-        // Load saved sound settings before starting music
-        // so the player's mute preferences are respected on app launch
+        // Load ALL saved settings before starting music
+        // so the player's preferences are respected on app launch
         val settings = ServiceLocator.settingsRepository.getSettings().first()
         ServiceLocator.soundManager.isSfxMuted = settings.sfxMuted
         ServiceLocator.soundManager.isMusicMuted = settings.musicMuted
+        ServiceLocator.hapticManager.isHapticMuted = settings.hapticMuted
 
         // Start background music (SoundManager will respect the mute flag)
         if (!settings.musicMuted) {

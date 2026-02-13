@@ -189,7 +189,10 @@ class GameEngine(private val levelConfig: LevelConfig) {
             val updatedBombs = board.bombs.mapValues { (_, timer) -> maxOf(0, timer - 1) }
             board = BoardState(board.rows, board.cols, board.grid, board.obstacles, updatedBombs)
             if (updatedBombs.any { it.value <= 0 }) {
-                // A bomb exploded! Game over.
+                // A bomb exploded! Score the matches the player earned this move
+                // before ending the game (they made a valid swap, they deserve the points).
+                val scoreGained = scoreCalculator.calculateTotalScore(matches, 0)
+                score += scoreGained
                 phase = GamePhase.GameOver
                 lastMatches = matches
                 return true

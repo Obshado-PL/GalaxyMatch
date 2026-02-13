@@ -33,8 +33,10 @@ class DailyChallengeDataStore(private val context: Context) {
      * Automatically detects date changes and resets todayCompleted.
      */
     fun getState(): Flow<DailyChallengeState> {
-        val today = LocalDate.now().toString()
         return context.dailyChallengeDataStore.data.map { prefs ->
+            // Evaluate today's date inside the map lambda (not outside the Flow)
+            // so it stays correct if the app runs past midnight.
+            val today = LocalDate.now().toString()
             val lastPlayed = prefs[LAST_PLAYED_DATE] ?: ""
             val streak = prefs[CURRENT_STREAK] ?: 0
             val bestScore = prefs[BEST_DAILY_SCORE] ?: 0
