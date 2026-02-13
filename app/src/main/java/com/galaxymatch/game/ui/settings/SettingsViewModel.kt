@@ -44,6 +44,8 @@ class SettingsViewModel : ViewModel() {
                         musicMuted = settings.musicMuted,
                         hapticMuted = settings.hapticMuted,
                         colorblindMode = settings.colorblindMode,
+                        fontSizeLevel = settings.fontSizeLevel,
+                        highContrastMode = settings.highContrastMode,
                         isLoaded = true
                     )
                 }
@@ -107,6 +109,31 @@ class SettingsViewModel : ViewModel() {
         }
     }
 
+    /**
+     * Cycle the font size level: Small → Normal → Large → Small.
+     * The new value is saved to disk immediately.
+     */
+    fun cycleFontSize() {
+        val currentLevel = _uiState.value.fontSizeLevel
+        val newLevel = (currentLevel + 1) % 3  // 0 → 1 → 2 → 0
+        _uiState.update { it.copy(fontSizeLevel = newLevel) }
+        viewModelScope.launch {
+            settingsRepo.saveFontSizeLevel(newLevel)
+        }
+    }
+
+    /**
+     * Toggle high-contrast mode on/off.
+     * Saves to disk; the game screen reads this setting when rendering gems.
+     */
+    fun toggleHighContrast() {
+        val newValue = !_uiState.value.highContrastMode
+        _uiState.update { it.copy(highContrastMode = newValue) }
+        viewModelScope.launch {
+            settingsRepo.saveHighContrastMode(newValue)
+        }
+    }
+
     /** Show the reset progress confirmation dialog. */
     fun onResetProgressClicked() {
         _uiState.update { it.copy(showResetDialog = true) }
@@ -148,6 +175,10 @@ data class SettingsUiState(
     val musicMuted: Boolean = false,
     val hapticMuted: Boolean = false,
     val colorblindMode: Boolean = false,
+    /** Font size preference: 0=Small, 1=Normal, 2=Large */
+    val fontSizeLevel: Int = 1,
+    /** Whether high-contrast gem colors are enabled */
+    val highContrastMode: Boolean = false,
     val showResetDialog: Boolean = false,
     val isLoaded: Boolean = false
 )

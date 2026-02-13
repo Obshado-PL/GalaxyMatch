@@ -127,6 +127,16 @@ class HapticManager(context: Context) {
         vibrate(120L, 150)
     }
 
+    /** Ultra-light tap for UI button presses — barely perceptible but satisfying. */
+    fun vibrateButtonTap() {
+        vibrate(20L, 50)
+    }
+
+    /** Medium celebratory pulse when a star is earned mid-game. */
+    fun vibrateStarEarned() {
+        vibrate(60L, 140)
+    }
+
     // ===== Internal Helper =====
 
     private fun vibrate(duration: Long, amplitude: Int) {

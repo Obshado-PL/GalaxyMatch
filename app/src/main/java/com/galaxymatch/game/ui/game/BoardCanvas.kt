@@ -78,10 +78,12 @@ fun BoardCanvas(
     screenShakeProgress: Float = 0f,
     hintPositions: Set<Position> = emptySet(),
     hintAnimProgress: Float = 0f,
+    tutorialHighlightPositions: Set<Position> = emptySet(),
     boardEntryProgress: Float = 1f,
     activePowerUp: PowerUpType? = null,
     comboLevel: Int = 0,
     colorblindMode: Boolean = false,
+    highContrastMode: Boolean = false,
     onSwipe: (Position, Position) -> Unit,
     onPowerUpTap: (Position) -> Unit = {},
     modifier: Modifier = Modifier
@@ -101,6 +103,20 @@ fun BoardCanvas(
             repeatMode = RepeatMode.Restart
         ),
         label = "specialAnimLoop"
+    )
+
+    // === Idle gem float animation loop ===
+    // Runs continuously from 0→1 over 3 seconds, then restarts.
+    // Gives all gems a subtle vertical bobbing motion so the board
+    // feels alive even when the player isn't interacting.
+    val idleAnimProgress by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 3000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "idleFloat"
     )
 
     // === Particle System ===
@@ -163,20 +179,46 @@ fun BoardCanvas(
         }
     }
 
-    // === Confetti celebration on level complete ===
-    // When the game phase transitions to LevelComplete, spawn 3 waves of
-    // colorful confetti that rain down from the top of the board canvas.
+    // === Confetti + firework celebration on level complete ===
+    // When the game phase transitions to LevelComplete, spawn 4 waves of
+    // colorful confetti interspersed with 3 firework bursts for a dramatic
+    // "you won!" celebration. Total ~220 particles, well within the 500 cap.
     LaunchedEffect(phase) {
         if (phase == GamePhase.LevelComplete) {
             val cellSize = cellSizeState.floatValue
             if (cellSize > 0f) {
                 val canvasWidth = cellSize * boardState.cols
                 val canvasHeight = cellSize * boardState.rows
-                // 3 staggered waves for a sustained confetti shower
+
+                // Firework burst colors — gold, bright cyan, magenta
+                val burstColors = listOf(
+                    Color(0xFFFFD700), // Gold
+                    Color(0xFF00DDFF), // Cyan
+                    Color(0xFFFF44AA)  // Magenta
+                )
+
+                // Wave 1: Confetti shower + center firework
                 particleSystem.spawnConfetti(canvasWidth, canvasHeight)
-                delay(300)
+                particleSystem.spawnFireworkBurst(
+                    canvasWidth * 0.5f, canvasHeight * 0.4f, burstColors[0]
+                )
+                delay(250)
+
+                // Wave 2: More confetti + left firework
                 particleSystem.spawnConfetti(canvasWidth, canvasHeight)
-                delay(300)
+                particleSystem.spawnFireworkBurst(
+                    canvasWidth * 0.25f, canvasHeight * 0.3f, burstColors[1]
+                )
+                delay(250)
+
+                // Wave 3: More confetti + right firework
+                particleSystem.spawnConfetti(canvasWidth, canvasHeight)
+                particleSystem.spawnFireworkBurst(
+                    canvasWidth * 0.75f, canvasHeight * 0.35f, burstColors[2]
+                )
+                delay(250)
+
+                // Wave 4: Final confetti burst (extra density)
                 particleSystem.spawnConfetti(canvasWidth, canvasHeight)
             }
         }
@@ -440,6 +482,26 @@ fun BoardCanvas(
                     centerY = fromY + (toY - fromY) * fallProgress
                 }
 
+                // === Idle float: subtle vertical bobbing ===
+                // Each gem uses a slightly different phase offset based on its
+                // row + col position, so they don't all bob in sync — feels organic.
+                // The offset is tiny (~1-2px) — just enough to feel alive, not distracting.
+                // Only applied when the gem is NOT being moved by another animation.
+                val isSwapping = swapAnimation != null &&
+                    (pos == swapAnimation.from || pos == swapAnimation.to)
+                val shouldBob = movement == null      // Not falling
+                    && !isSwapping                    // Not swapping
+                    && boardEntryProgress >= 1f       // Entry animation done
+
+                if (shouldBob) {
+                    // Irrational-ish multipliers avoid repetitive patterns across the grid
+                    val idlePhaseOffset = row * 0.37f + col * 0.53f
+                    val idleBobAmount = gemRadius * 0.04f  // ~1.5px at typical gem sizes
+                    centerY += idleBobAmount * kotlin.math.sin(
+                        (idleAnimProgress + idlePhaseOffset) * 2f * Math.PI.toFloat()
+                    )
+                }
+
                 // === Match/clear animation ===
                 // Matched gems shrink and fade out as matchClearProgress goes 0→1
                 val isMatched = pos in matchedPositions
@@ -481,6 +543,30 @@ fun BoardCanvas(
                     )
                 }
 
+                // === Tutorial highlight glow ===
+                // Similar to hint glow but uses a green pulsing ring to draw attention.
+                // Uses the specialAnimProgress for continuous pulsing since the tutorial
+                // overlay is always visible during this phase.
+                val isTutorialHighlighted = pos in tutorialHighlightPositions
+                if (isTutorialHighlighted) {
+                    val tutGlowPulse = kotlin.math.sin(specialAnimProgress * 2f * Math.PI.toFloat())
+                    val tutGlowRadius = gemRadius * (1.15f + 0.1f * tutGlowPulse)
+                    val tutGlowAlpha = 0.4f + 0.3f * tutGlowPulse
+
+                    // Outer green ring — attention-grabbing tutorial highlight
+                    drawCircle(
+                        color = Color(0xFF44DD44).copy(alpha = tutGlowAlpha * 0.5f),
+                        radius = tutGlowRadius * 1.2f,
+                        center = Offset(centerX, centerY)
+                    )
+                    // Inner bright white glow
+                    drawCircle(
+                        color = Color.White.copy(alpha = tutGlowAlpha * 0.6f),
+                        radius = tutGlowRadius,
+                        center = Offset(centerX, centerY)
+                    )
+                }
+
                 // Only draw if the gem is still visible (not fully shrunk/faded)
                 if (alpha > 0.01f && drawRadius > 0.5f) {
                     drawGem(
@@ -490,7 +576,8 @@ fun BoardCanvas(
                         radius = drawRadius,
                         alpha = alpha,
                         specialAnimProgress = specialAnimProgress,
-                        colorblindMode = colorblindMode
+                        colorblindMode = colorblindMode,
+                        highContrastMode = highContrastMode
                     )
 
                     // === Obstacle overlays ===

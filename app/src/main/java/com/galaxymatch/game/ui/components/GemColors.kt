@@ -2,6 +2,7 @@ package com.galaxymatch.game.ui.components
 
 import androidx.compose.ui.graphics.Color
 import com.galaxymatch.game.model.GemType
+import com.galaxymatch.game.ui.theme.*
 
 /**
  * Maps gem types to their display colors.
@@ -29,3 +30,19 @@ fun GemType.toLightColor(): Color = this.color.copy(
     green = (this.color.green + (1f - this.color.green) * 0.4f),
     blue = (this.color.blue + (1f - this.color.blue) * 0.4f)
 )
+
+/**
+ * Get the high-contrast version of a gem color.
+ *
+ * High-contrast colors are brighter and more saturated, making gems
+ * easier to distinguish on low-brightness screens or for players with
+ * mild color vision differences. Defined in Color.kt as GemRedHC, etc.
+ */
+fun GemType.toHighContrastColor(): Color = when (this) {
+    GemType.Red -> GemRedHC
+    GemType.Blue -> GemBlueHC
+    GemType.Green -> GemGreenHC
+    GemType.Yellow -> GemYellowHC
+    GemType.Orange -> GemOrangeHC
+    GemType.Purple -> GemPurpleHC
+}

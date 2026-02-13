@@ -3,9 +3,9 @@ package com.galaxymatch.game.ui.game
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import com.galaxymatch.game.ui.components.SpaceDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.animation.core.Animatable
@@ -41,6 +41,7 @@ import com.galaxymatch.game.model.PowerUpType
 import com.galaxymatch.game.ui.components.StarRating
 import com.galaxymatch.game.ui.components.GalaxyBackground
 import com.galaxymatch.game.ui.theme.GameBackground
+import com.galaxymatch.game.ServiceLocator
 import com.galaxymatch.game.ui.theme.StarGold
 
 /**
@@ -53,18 +54,22 @@ import com.galaxymatch.game.ui.theme.StarGold
  * - Shows game-over or level-complete overlays when appropriate
  *
  * @param levelNumber Which level to play
- * @param onGameEnd Called when the game ends (score, stars, won, objectiveText)
+ * @param onGameEnd Called when the game ends (score, stars, won, objectiveText, isNewHighScore)
  * @param onBackToMap Called when the player wants to return to the level map
  */
 @Composable
 fun GameScreen(
     levelNumber: Int,
-    onGameEnd: (score: Int, stars: Int, won: Boolean, objectiveText: String) -> Unit,
+    onGameEnd: (score: Int, stars: Int, won: Boolean, objectiveText: String, isNewHighScore: Boolean) -> Unit,
     onBackToMap: () -> Unit
 ) {
     // Create ViewModel — remember ensures it survives recomposition
     val viewModel = remember(levelNumber) { GameViewModel(levelNumber) }
     val state by viewModel.uiState.collectAsState()
+
+    // Sound + haptic for UI button taps (short references for convenience)
+    val sound = ServiceLocator.soundManager
+    val haptic = ServiceLocator.hapticManager
 
     // === Back gesture / button intercept ===
     // Prevents the Android back gesture (swipe from edge) from accidentally
@@ -168,7 +173,10 @@ fun GameScreen(
                         textAlign = TextAlign.Center
                     )
                     Button(
-                        onClick = { viewModel.cancelPowerUp() },
+                        onClick = {
+                            sound.playButtonTap(); haptic.vibrateButtonTap()
+                            viewModel.cancelPowerUp()
+                        },
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color.White.copy(alpha = 0.15f)
                         ),
@@ -189,7 +197,10 @@ fun GameScreen(
                         val isIdle = state.phase == GamePhase.Idle && state.boardEntryProgress >= 1f
 
                         Button(
-                            onClick = { viewModel.onPowerUpSelected(powerUp) },
+                            onClick = {
+                                sound.playButtonTap(); haptic.vibrateButtonTap()
+                                viewModel.onPowerUpSelected(powerUp)
+                            },
                             enabled = canAfford && isIdle,
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = Color(0xFF3D3B6E),
@@ -230,10 +241,12 @@ fun GameScreen(
                     screenShakeProgress = state.screenShakeProgress,
                     hintPositions = state.hintPositions,
                     hintAnimProgress = state.hintAnimProgress,
+                    tutorialHighlightPositions = state.tutorialHighlightPositions,
                     boardEntryProgress = state.boardEntryProgress,
                     activePowerUp = state.activePowerUp,
                     comboLevel = state.comboCount,
                     colorblindMode = state.colorblindMode,
+                    highContrastMode = state.highContrastMode,
                     onSwipe = { from, to ->
                         viewModel.onSwipe(from, to)
                     },
@@ -243,6 +256,30 @@ fun GameScreen(
                     modifier = Modifier
                         .weight(1f)
                         .padding(horizontal = 4.dp)
+                )
+            }
+
+            // === Extra Moves "+5 Moves!" Floating Text ===
+            // Animated text that pops in, scales down, floats up, and fades out
+            if (state.extraMovesAnimActive) {
+                val progress = state.extraMovesAnimProgress
+                // Scale: starts at 1.5x, settles to 0.8x
+                val textScale = 1.5f - 0.7f * progress
+                // Alpha: fully visible until 60% progress, then fades out
+                val textAlpha = if (progress < 0.6f) 1f else 1f - ((progress - 0.6f) / 0.4f)
+                // Float upward as animation progresses
+                val yOffset = (-60 * progress).dp
+
+                Text(
+                    text = "+5 Moves!",
+                    style = MaterialTheme.typography.headlineMedium.copy(
+                        fontWeight = FontWeight.ExtraBold
+                    ),
+                    color = Color(0xFFFFD700).copy(alpha = textAlpha.coerceIn(0f, 1f)),
+                    modifier = Modifier
+                        .scale(textScale.coerceAtLeast(0.1f))
+                        .alpha(textAlpha.coerceIn(0f, 1f))
+                        .offset(y = yOffset)
                 )
             }
 
@@ -292,7 +329,10 @@ fun GameScreen(
             ) {
                 // Undo button — orange, disabled when not available
                 Button(
-                    onClick = { viewModel.onUndo() },
+                    onClick = {
+                        sound.playButtonTap(); haptic.vibrateButtonTap()
+                        viewModel.onUndo()
+                    },
                     enabled = state.undoAvailable && state.phase == GamePhase.Idle,
                     interactionSource = undoInteraction,
                     colors = ButtonDefaults.buttonColors(
@@ -312,7 +352,10 @@ fun GameScreen(
 
                 // Restart button
                 Button(
-                    onClick = { viewModel.onRestartClicked() },
+                    onClick = {
+                        sound.playButtonTap(); haptic.vibrateButtonTap()
+                        viewModel.onRestartClicked()
+                    },
                     interactionSource = restartInteraction,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color(0xFFCC3333)
@@ -328,7 +371,10 @@ fun GameScreen(
 
                 // Back to Map button
                 Button(
-                    onClick = onBackToMap,
+                    onClick = {
+                        sound.playButtonTap(); haptic.vibrateButtonTap()
+                        onBackToMap()
+                    },
                     interactionSource = mapInteraction,
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color.White.copy(alpha = 0.15f)
@@ -365,6 +411,19 @@ fun GameScreen(
                     modifier = Modifier.offset { IntOffset(0, offsetY) }
                 )
             }
+        }
+
+        // === Color Bomb Screen Tint Flash ===
+        // Full-screen colored tint that fades out when a Color Bomb power-up is used.
+        // The tint color matches the target gem color for a satisfying "wipe" effect.
+        val bombFlashColor = state.colorBombFlashColor
+        if (bombFlashColor != null && state.colorBombFlashProgress < 1f) {
+            val tintAlpha = 0.35f * (1f - state.colorBombFlashProgress)
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(bombFlashColor.copy(alpha = tintAlpha))
+            )
         }
 
         // === Shuffling indicator (with pulsing text) ===
@@ -534,11 +593,13 @@ fun GameScreen(
 
                     Button(
                         onClick = {
+                            sound.playButtonTap(); haptic.vibrateButtonTap()
                             onGameEnd(
                                 state.score,
                                 state.stars,
                                 state.phase == GamePhase.LevelComplete,
-                                objectiveText
+                                objectiveText,
+                                state.isNewHighScore
                             )
                         },
                         interactionSource = continueInteraction,
@@ -563,11 +624,15 @@ fun GameScreen(
             }
         }
 
-        // === Tutorial Overlay ===
-        // Shown on level 1 first play to teach the player how to play
+        // === Interactive Tutorial Overlay ===
+        // Shown on level 1 first play. Step 1 highlights two gems for the player
+        // to swap; steps 2-3 show info cards about matching and specials.
         if (state.showTutorial) {
             TutorialOverlay(
-                onDismiss = { viewModel.dismissTutorial() }
+                tutorialStep = state.tutorialStep,
+                hasHighlightedGems = state.tutorialHighlightPositions.isNotEmpty(),
+                onContinue = { viewModel.onTutorialContinue() },
+                onSkip = { viewModel.dismissTutorial() }
             )
         }
 
@@ -584,85 +649,47 @@ fun GameScreen(
     }
 
     // === Restart Confirmation Dialog ===
-    // Shown when the player taps the Restart button
+    // Shown when the player taps the Restart button.
+    // Uses SpaceDialog for animated entry/exit with space-themed styling.
     if (state.showRestartDialog) {
-        AlertDialog(
-            onDismissRequest = { viewModel.onRestartDismissed() },
-            title = {
-                Text(
-                    text = "Restart Level?",
-                    fontWeight = FontWeight.Bold
-                )
+        SpaceDialog(
+            emoji = "🔄",
+            title = "Restart Level?",
+            message = "Your current progress on this level will be lost.",
+            confirmText = "Restart",
+            dismissText = "Cancel",
+            confirmColor = Color(0xFFCC3333),
+            onConfirm = {
+                sound.playButtonTap(); haptic.vibrateButtonTap()
+                viewModel.restartLevel()
             },
-            text = {
-                Text("Your current progress on this level will be lost.")
-            },
-            confirmButton = {
-                Button(
-                    onClick = { viewModel.restartLevel() },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFCC3333)
-                    )
-                ) {
-                    Text("Restart", color = Color.White)
-                }
-            },
-            dismissButton = {
-                Button(
-                    onClick = { viewModel.onRestartDismissed() },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color.White.copy(alpha = 0.15f)
-                    )
-                ) {
-                    Text("Cancel", color = Color.White)
-                }
-            },
-            containerColor = Color(0xFF2D2B55),
-            titleContentColor = Color.White,
-            textContentColor = Color.White.copy(alpha = 0.8f)
+            onDismiss = {
+                sound.playButtonTap(); haptic.vibrateButtonTap()
+                viewModel.onRestartDismissed()
+            }
         )
     }
 
     // === Quit Confirmation Dialog ===
-    // Shown when the player uses the back gesture or back button during gameplay
+    // Shown when the player uses the back gesture or back button during gameplay.
+    // Uses SpaceDialog for animated entry/exit with space-themed styling.
     if (showQuitDialog) {
-        AlertDialog(
-            onDismissRequest = { showQuitDialog = false },
-            title = {
-                Text(
-                    text = "Quit Level?",
-                    fontWeight = FontWeight.Bold
-                )
+        SpaceDialog(
+            emoji = "🚪",
+            title = "Quit Level?",
+            message = "Your progress on this level will be lost.",
+            confirmText = "Quit",
+            dismissText = "Keep Playing",
+            confirmColor = Color(0xFFCC3333),
+            onConfirm = {
+                sound.playButtonTap(); haptic.vibrateButtonTap()
+                showQuitDialog = false
+                onBackToMap()
             },
-            text = {
-                Text("Your progress on this level will be lost.")
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showQuitDialog = false
-                        onBackToMap()
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFCC3333)
-                    )
-                ) {
-                    Text("Quit", color = Color.White)
-                }
-            },
-            dismissButton = {
-                Button(
-                    onClick = { showQuitDialog = false },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color.White.copy(alpha = 0.15f)
-                    )
-                ) {
-                    Text("Keep Playing", color = Color.White)
-                }
-            },
-            containerColor = Color(0xFF2D2B55),
-            titleContentColor = Color.White,
-            textContentColor = Color.White.copy(alpha = 0.8f)
+            onDismiss = {
+                sound.playButtonTap(); haptic.vibrateButtonTap()
+                showQuitDialog = false
+            }
         )
     }
 }

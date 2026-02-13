@@ -1,5 +1,6 @@
 package com.galaxymatch.game.ui.game
 
+import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.galaxymatch.game.ServiceLocator
@@ -82,7 +83,12 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
         viewModelScope.launch {
             val settings = settingsRepo.getSettings().first()
             haptic.isHapticMuted = settings.hapticMuted
-            _uiState.update { it.copy(colorblindMode = settings.colorblindMode) }
+            _uiState.update {
+                it.copy(
+                    colorblindMode = settings.colorblindMode,
+                    highContrastMode = settings.highContrastMode
+                )
+            }
         }
     }
 
@@ -224,13 +230,14 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
         // we'll highlight a valid move to help them out
         startHintTimer()
 
-        // === Feature 4: Tutorial ===
-        // Show the tutorial overlay on level 1 if the player hasn't seen it yet
+        // === Feature 4: Interactive Tutorial ===
+        // Show the interactive tutorial on level 1 if the player hasn't seen it yet.
+        // Finds a valid move and highlights those two gems for the player to swap.
         if (level == 1) {
             viewModelScope.launch {
                 val settings = settingsRepo.getSettings().first()
                 if (!settings.tutorialSeen) {
-                    _uiState.update { it.copy(showTutorial = true) }
+                    startInteractiveTutorial()
                 }
             }
         }
@@ -247,6 +254,12 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
         if (_uiState.value.boardEntryProgress < 1f) return
         // Block swipes when a power-up is in target selection mode
         if (_uiState.value.activePowerUp != null) return
+        // During tutorial: route through tutorial handler.
+        // Steps 2-3 block all swipes; step 1 only accepts the highlighted swap.
+        if (_uiState.value.showTutorial) {
+            if (_uiState.value.tutorialStep > 1) return // Block swipes on info steps
+            if (onTutorialSwipe(from, to)) return // Tutorial consumed the swipe
+        }
 
         // Cancel any active hint — player is interacting with the board
         hintTimerJob?.cancel()
@@ -548,7 +561,10 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
 
             // === Feature 3: Star unlock animation ===
             // When a new star is earned mid-game, play a celebratory scale animation
+            // with a rising-pitch chime for each star (1→3 = low→high)
             if (newStars > oldStars) {
+                sound.playStarEarned(newStars)
+                haptic.vibrateStarEarned()
                 viewModelScope.launch {
                     _uiState.update {
                         it.copy(starJustUnlocked = newStars, starUnlockAnimProgress = 0f)
@@ -636,6 +652,16 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
                     haptic.vibrateGameOver()
                 }
 
+                // --- Determine if this is a new high score BEFORE saving ---
+                // We must compare BEFORE saveProgress() overwrites the stored value.
+                val newHighScore = if (endPhase == GamePhase.LevelComplete) {
+                    val previousBest = try {
+                        val progress = ServiceLocator.progressRepository.getProgress().first()
+                        progress.levelScores[levelNumber] ?: 0
+                    } catch (_: Exception) { 0 }
+                    engine.score > previousBest && previousBest >= 0
+                } else false
+
                 // Save progress if the player won (skip for special modes)
                 if (endPhase == GamePhase.LevelComplete && !isDailyChallenge && !isTimedMode) {
                     viewModelScope.launch {
@@ -674,7 +700,8 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
                 _uiState.update {
                     it.copy(
                         phase = endPhase,
-                        stars = stars
+                        stars = stars,
+                        isNewHighScore = newHighScore
                     )
                 }
             }
@@ -796,6 +823,15 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
         sound.playLevelComplete()
         haptic.vibrateLevelComplete()
 
+        // --- Determine if this is a new high score BEFORE saving ---
+        val newHighScore = run {
+            val previousBest = try {
+                val progress = ServiceLocator.progressRepository.getProgress().first()
+                progress.levelScores[levelNumber] ?: 0
+            } catch (_: Exception) { 0 }
+            engine.score > previousBest && previousBest >= 0
+        }
+
         // Save progress (skip for special modes — they use negative sentinel level numbers)
         if (!isDailyChallenge && !isTimedMode) {
             viewModelScope.launch {
@@ -837,7 +873,8 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
                 bonusMovesRemaining = 0,
                 phase = GamePhase.LevelComplete,
                 stars = stars,
-                movesRemaining = 0
+                movesRemaining = 0,
+                isNewHighScore = newHighScore
             )
         }
     }
@@ -915,14 +952,106 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
         startHintTimer()
     }
 
-    // ===== Feature 4: Tutorial =====
+    // ===== Feature 4: Interactive Tutorial =====
 
     /**
-     * Dismiss the tutorial overlay and save that the player has seen it.
-     * Won't show again on future level 1 plays.
+     * Start the interactive tutorial (level 1, first play only).
+     *
+     * Finds a valid swap using ShuffleChecker, highlights the two gems,
+     * and enters tutorial step 1 (guiding the player to make that swap).
+     */
+    private fun startInteractiveTutorial() {
+        val shuffleChecker = com.galaxymatch.game.engine.ShuffleChecker(
+            com.galaxymatch.game.engine.MatchDetector()
+        )
+        val validMove = shuffleChecker.findValidMove(engine.board)
+
+        if (validMove != null) {
+            // Found a valid move — highlight those two gems and enter step 1
+            _uiState.update {
+                it.copy(
+                    showTutorial = true,
+                    tutorialStep = 1,
+                    tutorialHighlightPositions = setOf(validMove.from, validMove.to),
+                    tutorialSwapFrom = validMove.from,
+                    tutorialSwapTo = validMove.to
+                )
+            }
+        } else {
+            // Fallback: no valid move found (extremely unlikely on level 1).
+            // Show a text-only tutorial instead.
+            _uiState.update {
+                it.copy(showTutorial = true, tutorialStep = 1)
+            }
+        }
+    }
+
+    /**
+     * Handle a swipe during the tutorial.
+     *
+     * During step 1, only accepts the highlighted swap. Ignores all other swipes.
+     * After the correct swap, processes it normally and advances to step 2.
+     *
+     * @return true if the swipe was handled by the tutorial, false to pass through
+     */
+    fun onTutorialSwipe(from: Position, to: Position): Boolean {
+        val state = _uiState.value
+        if (!state.showTutorial || state.tutorialStep != 1) return false
+
+        val expectedFrom = state.tutorialSwapFrom
+        val expectedTo = state.tutorialSwapTo
+        if (expectedFrom == null || expectedTo == null) return false
+
+        // Check if the swipe matches the expected swap (either direction)
+        val isCorrectSwap = (from == expectedFrom && to == expectedTo) ||
+                (from == expectedTo && to == expectedFrom)
+
+        if (!isCorrectSwap) {
+            // Wrong swap — ignore silently (tutorial highlights stay)
+            return true
+        }
+
+        // Correct swap! Clear highlights and advance to step 2 after the swap processes
+        _uiState.update {
+            it.copy(
+                tutorialStep = 2,
+                tutorialHighlightPositions = emptySet(),
+                tutorialSwapFrom = null,
+                tutorialSwapTo = null
+            )
+        }
+
+        // Let the normal onSwipe logic handle the actual swap
+        return false
+    }
+
+    /**
+     * Advance the tutorial to the next step when the player taps "continue".
+     * Steps: 1 (swap) → 2 (match result) → 3 (specials info) → done.
+     */
+    fun onTutorialContinue() {
+        val currentStep = _uiState.value.tutorialStep
+        if (currentStep >= 3) {
+            // Tutorial complete — dismiss and save
+            dismissTutorial()
+        } else {
+            _uiState.update { it.copy(tutorialStep = currentStep + 1) }
+        }
+    }
+
+    /**
+     * Skip the entire tutorial (player taps "Skip Tutorial").
      */
     fun dismissTutorial() {
-        _uiState.update { it.copy(showTutorial = false) }
+        _uiState.update {
+            it.copy(
+                showTutorial = false,
+                tutorialStep = 0,
+                tutorialHighlightPositions = emptySet(),
+                tutorialSwapFrom = null,
+                tutorialSwapTo = null
+            )
+        }
         viewModelScope.launch {
             settingsRepo.saveTutorialSeen(true)
         }
@@ -996,12 +1125,24 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
                     if (position == null) return@launch
                     sound.playSpecialActivation()
                     haptic.vibrateSpecialActivation()
+                    // Trigger hammer impact flash VFX at target position
+                    _uiState.update { it.copy(
+                        hammerFlashPosition = position,
+                        hammerFlashProgress = 0f
+                    ) }
                     engine.useHammer(position)
                 }
                 PowerUpType.ColorBomb -> {
                     if (position == null) return@launch
                     sound.playSpecialActivation()
                     haptic.vibrateSpecialActivation()
+                    // Get the target gem's color for the screen tint flash
+                    val targetGem = engine.board.gemAt(position)
+                    val tintColor = targetGem?.type?.color
+                    _uiState.update { it.copy(
+                        colorBombFlashColor = tintColor,
+                        colorBombFlashProgress = 0f
+                    ) }
                     engine.useColorBomb(position)
                 }
                 PowerUpType.ExtraMoves -> {
@@ -1029,14 +1170,66 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
             // Handle the result based on what the engine did
             when (type) {
                 PowerUpType.ExtraMoves -> {
-                    // Simple: just update the moves counter in the UI
+                    // Trigger "+5 Moves!" floating text animation
                     _uiState.update {
-                        it.copy(movesRemaining = engine.movesRemaining)
+                        it.copy(
+                            movesRemaining = engine.movesRemaining,
+                            extraMovesAnimActive = true,
+                            extraMovesAnimProgress = 0f
+                        )
                     }
+                    // Animate the floating text: 0→1 over 800ms
+                    animateProgress(durationMs = 800, steps = 48) { state, progress ->
+                        state.copy(extraMovesAnimProgress = progress)
+                    }
+                    _uiState.update { it.copy(extraMovesAnimActive = false) }
                     startHintTimer()
                 }
-                PowerUpType.Hammer, PowerUpType.ColorBomb -> {
-                    // Animate gravity fall first, then run cascade if needed
+                PowerUpType.Hammer -> {
+                    // Animate hammer impact flash: expanding circle over 200ms
+                    animateProgress(durationMs = 200, steps = 12) { state, progress ->
+                        state.copy(hammerFlashProgress = progress)
+                    }
+                    // Brief dramatic pause before gravity
+                    kotlinx.coroutines.delay(100)
+                    _uiState.update { it.copy(hammerFlashPosition = null, hammerFlashProgress = 0f) }
+
+                    // Animate gravity fall, then run cascade if needed
+                    val gravityResult = engine.lastGravityResult
+                    _uiState.update {
+                        it.copy(
+                            board = engine.board,
+                            score = engine.score,
+                            phase = GamePhase.Cascading,
+                            fallingGems = gravityResult?.movements ?: emptyList(),
+                            fallProgress = 0f,
+                            currentStars = engine.getStarRating()
+                        )
+                    }
+
+                    animateProgress(durationMs = 350, steps = 22) { state, progress ->
+                        state.copy(fallProgress = progress)
+                    }
+                    _uiState.update {
+                        it.copy(fallingGems = emptyList(), fallProgress = 0f)
+                    }
+
+                    if (engine.lastMatches.isNotEmpty()) {
+                        runCascadeLoop()
+                    } else {
+                        val endPhase = engine.evaluateEndCondition()
+                        handlePostPowerUpEndCondition(endPhase)
+                    }
+                    return@launch
+                }
+                PowerUpType.ColorBomb -> {
+                    // Animate color bomb tint flash: screen overlay over 300ms
+                    animateProgress(durationMs = 300, steps = 18) { state, progress ->
+                        state.copy(colorBombFlashProgress = progress)
+                    }
+                    _uiState.update { it.copy(colorBombFlashColor = null, colorBombFlashProgress = 0f) }
+
+                    // Animate gravity fall, then run cascade if needed
                     val gravityResult = engine.lastGravityResult
                     _uiState.update {
                         it.copy(
@@ -1057,62 +1250,66 @@ class GameViewModel(private val levelNumber: Int) : ViewModel() {
                         it.copy(fallingGems = emptyList(), fallProgress = 0f)
                     }
 
-                    // If the engine found more matches, run the full cascade loop
                     if (engine.lastMatches.isNotEmpty()) {
                         runCascadeLoop()
                     } else {
-                        // No cascades — check end condition and return to idle
                         val endPhase = engine.evaluateEndCondition()
-                        if (endPhase == GamePhase.BonusMoves) {
-                            // Non-score objective completed with remaining moves!
-                            runBonusMoveLoop()
-                        } else if (endPhase == GamePhase.LevelComplete || endPhase == GamePhase.GameOver) {
-                            val stars = engine.getStarRating()
-                            if (endPhase == GamePhase.LevelComplete) {
-                                sound.playLevelComplete()
-                                haptic.vibrateLevelComplete()
-                                // Only save progress for normal levels (skip special modes)
-                                if (!isDailyChallenge && !isTimedMode) {
-                                    ServiceLocator.progressRepository.saveProgress(
-                                        levelNumber = levelNumber,
-                                        stars = stars,
-                                        score = engine.score
-                                    )
-                                }
-                                // Daily challenge: mark completed
-                                if (isDailyChallenge) {
-                                    ServiceLocator.dailyChallengeRepository.markCompleted(engine.score)
-                                }
-                                // Timed mode: save best score
-                                if (isTimedMode) {
-                                    timerJob?.cancel()
-                                    val diff = timedDifficulty
-                                    if (diff != null) {
-                                        ServiceLocator.timedChallengeRepository.saveBestScore(diff, engine.score)
-                                    }
-                                }
-                            } else {
-                                sound.playGameOver()
-                                haptic.vibrateGameOver()
-                            }
-                            saveStatistics()
-                            checkAchievements()
-                            _uiState.update {
-                                it.copy(phase = endPhase, stars = stars)
-                            }
-                        } else {
-                            _uiState.update {
-                                it.copy(
-                                    phase = GamePhase.Idle,
-                                    matchedPositions = emptySet(),
-                                    lastScoreGained = 0
-                                )
-                            }
-                            startHintTimer()
-                        }
+                        handlePostPowerUpEndCondition(endPhase)
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * Handle end-condition checking after a power-up finishes.
+     *
+     * Shared by both Hammer and ColorBomb power-up paths.
+     * Checks for bonus moves, level complete, game over, or returns to idle.
+     */
+    private suspend fun handlePostPowerUpEndCondition(endPhase: GamePhase) {
+        if (endPhase == GamePhase.BonusMoves) {
+            runBonusMoveLoop()
+        } else if (endPhase == GamePhase.LevelComplete || endPhase == GamePhase.GameOver) {
+            val stars = engine.getStarRating()
+            if (endPhase == GamePhase.LevelComplete) {
+                sound.playLevelComplete()
+                haptic.vibrateLevelComplete()
+                if (!isDailyChallenge && !isTimedMode) {
+                    ServiceLocator.progressRepository.saveProgress(
+                        levelNumber = levelNumber,
+                        stars = stars,
+                        score = engine.score
+                    )
+                }
+                if (isDailyChallenge) {
+                    ServiceLocator.dailyChallengeRepository.markCompleted(engine.score)
+                }
+                if (isTimedMode) {
+                    timerJob?.cancel()
+                    val diff = timedDifficulty
+                    if (diff != null) {
+                        ServiceLocator.timedChallengeRepository.saveBestScore(diff, engine.score)
+                    }
+                }
+            } else {
+                sound.playGameOver()
+                haptic.vibrateGameOver()
+            }
+            saveStatistics()
+            checkAchievements()
+            _uiState.update {
+                it.copy(phase = endPhase, stars = stars)
+            }
+        } else {
+            _uiState.update {
+                it.copy(
+                    phase = GamePhase.Idle,
+                    matchedPositions = emptySet(),
+                    lastScoreGained = 0
+                )
+            }
+            startHintTimer()
         }
     }
 
@@ -1330,9 +1527,17 @@ data class GameUiState(
     /** Whether the undo has been used this level (only one undo per level). */
     val undoUsedThisLevel: Boolean = false,
 
-    // === Feature 4: Tutorial ===
+    // === Feature 4: Interactive Tutorial ===
     /** Whether the tutorial overlay is currently showing. */
     val showTutorial: Boolean = false,
+    /** Current tutorial step: 0 = not in tutorial, 1 = swap step, 2 = match result, 3 = specials info. */
+    val tutorialStep: Int = 0,
+    /** Positions to highlight with a pulsing glow during tutorial step 1 (the two gems to swap). */
+    val tutorialHighlightPositions: Set<Position> = emptySet(),
+    /** The "from" position for the required tutorial swap (step 1). */
+    val tutorialSwapFrom: Position? = null,
+    /** The "to" position for the required tutorial swap (step 1). */
+    val tutorialSwapTo: Position? = null,
 
     // === Pre-Level Dialog ===
     /** Whether the pre-level dialog is showing (before board loads). */
@@ -1373,6 +1578,8 @@ data class GameUiState(
     // === Accessibility ===
     /** Whether colorblind mode is enabled (draws shape overlays on gems). */
     val colorblindMode: Boolean = false,
+    /** Whether high-contrast gem colors are enabled for better visibility. */
+    val highContrastMode: Boolean = false,
 
     // === Daily Challenge Mode ===
     /** Whether this is a daily challenge game. */
@@ -1388,5 +1595,23 @@ data class GameUiState(
 
     // === Achievement System ===
     /** Achievement just unlocked (emoji + title text). Null = no toast. */
-    val achievementUnlocked: String? = null
+    val achievementUnlocked: String? = null,
+
+    // === Level Complete Celebration ===
+    /** Whether the current score is a new personal best for this level. */
+    val isNewHighScore: Boolean = false,
+
+    // === Power-Up Visual Effects ===
+    /** Hammer impact flash: progress 0→1 over 200ms (expanding + fading circle at target). */
+    val hammerFlashProgress: Float = 0f,
+    /** Hammer flash center position (board row, col). Null = no flash active. */
+    val hammerFlashPosition: Position? = null,
+    /** ColorBomb screen tint color (null = no tint). Fades out using colorBombFlashProgress. */
+    val colorBombFlashColor: Color? = null,
+    /** ColorBomb tint flash: progress 0→1 over 300ms (fading overlay). */
+    val colorBombFlashProgress: Float = 0f,
+    /** Extra Moves "+5 Moves!" floating text animation: progress 0→1 over 800ms. */
+    val extraMovesAnimProgress: Float = 0f,
+    /** Whether the +5 Moves floating text animation is active. */
+    val extraMovesAnimActive: Boolean = false
 )

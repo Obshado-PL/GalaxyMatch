@@ -59,5 +59,7 @@ data class ResultsRoute(
     val stars: Int,
     val won: Boolean,
     /** Objective status text (e.g., "All ice broken!" or "Red: 20/25"). Empty = score-only level. */
-    val objectiveText: String = ""
+    val objectiveText: String = "",
+    /** Whether this score is a new personal best for this level. */
+    val isNewHighScore: Boolean = false
 )

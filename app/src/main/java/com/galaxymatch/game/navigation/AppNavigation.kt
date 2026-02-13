@@ -5,6 +5,8 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
@@ -23,8 +25,8 @@ import com.galaxymatch.game.ui.achievements.AchievementsScreen
 import com.galaxymatch.game.ui.timedchallenge.TimedChallengeScreen
 import com.galaxymatch.game.ui.help.HelpScreen
 
-/** Duration for all screen transitions (300ms with smooth deceleration) */
-private const val NAV_ANIM_DURATION = 300
+/** Duration for all screen transitions (400ms with smooth deceleration) */
+private const val NAV_ANIM_DURATION = 400
 
 /**
  * The main navigation graph for the app.
@@ -41,7 +43,9 @@ private const val NAV_ANIM_DURATION = 300
  * - Back navigation: current screen slides out to the right
  * - The underlying screen shifts slightly (1/3 width) for a parallax effect
  * - Splash → LevelMap: crossfade (smooth handoff)
- * - Game → Results: crossfade (dramatic game-ending moment)
+ * - LevelMap → Game: zoom effect (scale out map + scale in game) — dramatic "entering level" feel
+ * - Game → Results: zoom effect (scale out game + scale in results) — dramatic end moment
+ * - Pop transitions stay as slides for natural "going back" feel
  */
 @Composable
 fun AppNavigation() {
@@ -102,10 +106,17 @@ fun AppNavigation() {
 
         // ===== Level Map Screen =====
         // Shows all levels with their star ratings, player taps a level to play.
-        // Fades in from splash; uses default slide when returning from Game/Settings.
+        // Fades in from splash. Zooms out (scale 1.0→0.85 + fade) when entering a game level
+        // for a dramatic "diving into the level" effect. Default slide for other transitions.
         composable<LevelMapRoute>(
             enterTransition = {
                 fadeIn(animationSpec = tween(NAV_ANIM_DURATION, easing = FastOutSlowInEasing))
+            },
+            exitTransition = {
+                scaleOut(
+                    targetScale = 0.85f,
+                    animationSpec = tween(NAV_ANIM_DURATION, easing = FastOutSlowInEasing)
+                ) + fadeOut(animationSpec = tween(NAV_ANIM_DURATION, easing = FastOutSlowInEasing))
             }
         ) {
             LevelMapScreen(
@@ -199,23 +210,35 @@ fun AppNavigation() {
 
         // ===== Game Screen =====
         // The main match-3 gameplay screen.
-        // Fades out when going to Results (dramatic moment); slides out on pop (back to map).
+        // Enters with zoom-in (scale 0.9→1.0 + fade) for a dramatic "entering the level" effect.
+        // Exits to Results with zoom-out (scale 1.0→0.85 + fade) for a dramatic end moment.
+        // Pop back to map uses default slide for natural feel.
         composable<GameRoute>(
+            enterTransition = {
+                scaleIn(
+                    initialScale = 0.9f,
+                    animationSpec = tween(NAV_ANIM_DURATION, easing = FastOutSlowInEasing)
+                ) + fadeIn(animationSpec = tween(NAV_ANIM_DURATION, easing = FastOutSlowInEasing))
+            },
             exitTransition = {
-                fadeOut(animationSpec = tween(NAV_ANIM_DURATION, easing = FastOutSlowInEasing))
+                scaleOut(
+                    targetScale = 0.85f,
+                    animationSpec = tween(NAV_ANIM_DURATION, easing = FastOutSlowInEasing)
+                ) + fadeOut(animationSpec = tween(NAV_ANIM_DURATION, easing = FastOutSlowInEasing))
             }
         ) { backStackEntry ->
             val route = backStackEntry.toRoute<GameRoute>()
             GameScreen(
                 levelNumber = route.levelNumber,
-                onGameEnd = { score, stars, won, objectiveText ->
+                onGameEnd = { score, stars, won, objectiveText, isNewHighScore ->
                     navController.navigate(
                         ResultsRoute(
                             levelNumber = route.levelNumber,
                             score = score,
                             stars = stars,
                             won = won,
-                            objectiveText = objectiveText
+                            objectiveText = objectiveText,
+                            isNewHighScore = isNewHighScore
                         )
                     ) {
                         // Pop back to level map so the back stack is clean
@@ -230,10 +253,13 @@ fun AppNavigation() {
 
         // ===== Results Screen =====
         // Shows score, stars, and options to replay, go to next level, or return to map.
-        // Fades in from Game (complements Game's fadeOut); slides out on forward navigation.
+        // Zooms in (scale 0.85→1.0 + fade) from Game for a dramatic reveal moment.
         composable<ResultsRoute>(
             enterTransition = {
-                fadeIn(animationSpec = tween(NAV_ANIM_DURATION, easing = FastOutSlowInEasing))
+                scaleIn(
+                    initialScale = 0.85f,
+                    animationSpec = tween(NAV_ANIM_DURATION, easing = FastOutSlowInEasing)
+                ) + fadeIn(animationSpec = tween(NAV_ANIM_DURATION, easing = FastOutSlowInEasing))
             }
         ) { backStackEntry ->
             val route = backStackEntry.toRoute<ResultsRoute>()
@@ -243,6 +269,7 @@ fun AppNavigation() {
                 stars = route.stars,
                 won = route.won,
                 objectiveText = route.objectiveText,
+                isNewHighScore = route.isNewHighScore,
                 onPlayAgain = {
                     navController.navigate(GameRoute(route.levelNumber)) {
                         popUpTo(LevelMapRoute)

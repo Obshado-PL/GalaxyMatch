@@ -4,6 +4,8 @@ import android.content.Context
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.media.SoundPool
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import kotlin.random.Random
 
@@ -61,6 +63,8 @@ class SoundManager(private val context: Context) {
     private val loseSoundId: Int = loadSoundByName("lose")
     private val shuffleSoundId: Int = loadSoundByName("shuffle")
     private val iceBreakSoundId: Int = loadSoundByName("ice_break")
+    private val buttonTapSoundId: Int = loadSoundByName("button_tap")
+    private val starEarnedSoundId: Int = loadSoundByName("star_earned")
 
     // Resource ID for background music (looked up at runtime)
     private val bgmResourceId: Int = getResourceId("bgm")
@@ -80,6 +84,18 @@ class SoundManager(private val context: Context) {
 
     /** When true, background music is muted */
     var isMusicMuted: Boolean = false
+
+    // ===== Volume Ducking =====
+    // Temporarily lowers BGM volume when SFX plays, so sound effects
+    // punch through the music clearly. Uses a Handler to restore volume
+    // after a brief delay, avoiding the need for a coroutine scope.
+    // Rapid SFX playback (like cascading matches) keeps BGM ducked until
+    // things settle down — the restore timer resets each time.
+    private val duckHandler = Handler(Looper.getMainLooper())
+    private var isDucked = false
+    private val BGM_NORMAL_VOLUME = 0.4f
+    private val BGM_DUCKED_VOLUME = 0.15f
+    private val DUCK_RESTORE_DELAY_MS = 300L
 
     // ===== Sound Effect Playback Methods =====
 
@@ -192,6 +208,45 @@ class SoundManager(private val context: Context) {
      */
     fun playBombExplode() {
         playSound(loseSoundId, pitch = 1.2f)
+    }
+
+    /**
+     * Play a light click sound when any UI button is tapped.
+     *
+     * Uses a dedicated button_tap.ogg if present; otherwise falls back to the
+     * swap sound at a lighter volume and higher pitch so there's always audible
+     * feedback even without a dedicated file.
+     */
+    fun playButtonTap() {
+        if (buttonTapSoundId != 0) {
+            playSound(buttonTapSoundId, volume = 0.5f, pitch = 1.2f)
+        } else {
+            // Fallback: reuse the swap sound at a lighter volume/higher pitch
+            playSound(swapSoundId, volume = 0.3f, pitch = 1.5f)
+        }
+    }
+
+    /**
+     * Play a celebratory chime when a new star is earned mid-game.
+     *
+     * Pitch rises with each star for a satisfying escalation:
+     * - Star 1: pitch 1.1 (warm)
+     * - Star 2: pitch 1.3 (brighter)
+     * - Star 3: pitch 1.5 (triumphant)
+     *
+     * Falls back to the match sound at the same pitches if star_earned.ogg
+     * is not present.
+     *
+     * @param starNumber Which star was just earned (1, 2, or 3)
+     */
+    fun playStarEarned(starNumber: Int = 1) {
+        val pitch = 0.9f + starNumber * 0.2f  // 1.1, 1.3, 1.5
+        if (starEarnedSoundId != 0) {
+            playSound(starEarnedSoundId, volume = 0.7f, pitch = pitch)
+        } else {
+            // Fallback: reuse the match sound with a bright, rising pitch
+            playSound(matchSoundId, volume = 0.6f, pitch = pitch)
+        }
     }
 
     // ===== Background Music Methods =====
@@ -327,6 +382,7 @@ class SoundManager(private val context: Context) {
      * MUST be called when the Activity is destroyed to prevent memory leaks.
      */
     fun release() {
+        duckHandler.removeCallbacksAndMessages(null)
         soundPool.release()
         stopBackgroundMusic()
     }
@@ -377,6 +433,9 @@ class SoundManager(private val context: Context) {
     private fun playSound(soundId: Int, volume: Float = 1.0f, pitch: Float = 1.0f) {
         if (isSfxMuted || soundId == 0) return
 
+        // Duck the background music so the SFX punches through clearly
+        duckBgm()
+
         try {
             soundPool.play(
                 soundId,
@@ -390,5 +449,38 @@ class SoundManager(private val context: Context) {
             // Silently ignore playback errors
             Log.w(TAG, "Error playing sound: ${e.message}")
         }
+    }
+
+    /**
+     * Temporarily duck (lower) the BGM volume when a sound effect plays.
+     *
+     * If already ducked, resets the restore timer so rapid SFX playback
+     * (like cascading matches) keeps the BGM ducked until things settle.
+     * Volume restores automatically after [DUCK_RESTORE_DELAY_MS].
+     */
+    private fun duckBgm() {
+        if (isMusicMuted || currentBgmPlayer == null) return
+
+        // Remove any pending restore — we're extending the duck period
+        duckHandler.removeCallbacksAndMessages(null)
+
+        if (!isDucked) {
+            isDucked = true
+            try {
+                currentBgmPlayer?.setVolume(BGM_DUCKED_VOLUME, BGM_DUCKED_VOLUME)
+            } catch (e: Exception) {
+                Log.w(TAG, "Error ducking BGM: ${e.message}")
+            }
+        }
+
+        // Schedule volume restore after the delay
+        duckHandler.postDelayed({
+            isDucked = false
+            try {
+                currentBgmPlayer?.setVolume(BGM_NORMAL_VOLUME, BGM_NORMAL_VOLUME)
+            } catch (e: Exception) {
+                Log.w(TAG, "Error restoring BGM volume: ${e.message}")
+            }
+        }, DUCK_RESTORE_DELAY_MS)
     }
 }

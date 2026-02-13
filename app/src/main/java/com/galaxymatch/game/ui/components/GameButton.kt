@@ -19,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.galaxymatch.game.ServiceLocator
 
 /**
  * Styled button used throughout the game UI.
@@ -54,7 +55,12 @@ fun GameButton(
     )
 
     Button(
-        onClick = onClick,
+        onClick = {
+            // Play button tap sound + haptic for satisfying feedback
+            ServiceLocator.soundManager.playButtonTap()
+            ServiceLocator.hapticManager.vibrateButtonTap()
+            onClick()
+        },
         colors = ButtonDefaults.buttonColors(containerColor = color),
         shape = RoundedCornerShape(16.dp),
         interactionSource = interactionSource, // Let us observe press events

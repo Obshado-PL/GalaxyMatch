@@ -22,6 +22,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.galaxymatch.game.ui.components.GalaxyBackground
+import com.galaxymatch.game.ui.components.LevelMapSkeleton
 import com.galaxymatch.game.ui.theme.GameBackground
 
 /**
@@ -198,17 +199,8 @@ fun LevelMapScreen(
                 }
             }
         } else {
-            // Loading state
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "Loading...",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = Color.White.copy(alpha = 0.5f)
-                )
-            }
+            // Loading state — shimmer skeleton grid instead of plain text
+            LevelMapSkeleton()
         }
         } // Column
     } // Box

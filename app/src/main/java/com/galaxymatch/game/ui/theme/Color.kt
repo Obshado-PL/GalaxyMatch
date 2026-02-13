@@ -28,6 +28,16 @@ val GemYellow = Color(0xFFFFDD44)
 val GemOrange = Color(0xFFFF8844)
 val GemPurple = Color(0xFFDD44FF)
 
+// ===== High-Contrast Gem Colors =====
+// Brighter, more saturated versions for players who need extra visibility.
+// Used when "High Contrast" is enabled in Settings.
+val GemRedHC = Color(0xFFFF2222)
+val GemBlueHC = Color(0xFF2266FF)
+val GemGreenHC = Color(0xFF22FF22)
+val GemYellowHC = Color(0xFFFFFF00)
+val GemOrangeHC = Color(0xFFFF6600)
+val GemPurpleHC = Color(0xFFFF00FF)
+
 // ===== UI Colors =====
 val StarGold = Color(0xFFFFD700)
 val StarEmpty = Color(0xFF555555)

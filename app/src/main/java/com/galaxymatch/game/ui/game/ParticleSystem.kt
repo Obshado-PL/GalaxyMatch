@@ -314,6 +314,44 @@ class ParticleSystem {
     }
 
     /**
+     * Spawn a firework burst — a cluster of particles that explode outward
+     * from a single point in all directions.
+     *
+     * Unlike confetti (which rains downward), fireworks go UP and OUT with
+     * high initial speed and tight clustering, like a real firework detonation.
+     * Used during level complete celebrations alongside confetti for extra drama.
+     *
+     * @param x Center X of the burst (Canvas pixels)
+     * @param y Center Y of the burst (Canvas pixels)
+     * @param burstColor Primary color (all particles share the same color for cohesion)
+     */
+    fun spawnFireworkBurst(x: Float, y: Float, burstColor: Color) {
+        val count = minOf(20, MAX_PARTICLES - particles.size)
+
+        for (i in 0 until count) {
+            // Evenly distributed angles for a uniform explosion
+            val angle = (i.toFloat() / count) * 2f * Math.PI.toFloat()
+            // High initial speed with some variation for a natural look
+            val speed = 250f + Random.nextFloat() * 150f
+            val lifetime = 0.6f + Random.nextFloat() * 0.4f
+
+            particles.add(
+                Particle(
+                    x = x, y = y,
+                    // Fireworks go outward in all directions, with slight upward bias
+                    velocityX = cos(angle) * speed,
+                    velocityY = sin(angle) * speed - 100f,
+                    color = burstColor,
+                    alpha = 1f,
+                    radius = 3f + Random.nextFloat() * 3f,
+                    life = lifetime,
+                    maxLife = lifetime
+                )
+            )
+        }
+    }
+
+    /**
      * Update all particles by one frame.
      *
      * Moves each particle along its velocity, applies light downward gravity
@@ -347,6 +385,50 @@ class ParticleSystem {
             if (p.life <= 0f || p.alpha <= 0.01f || p.radius <= 0.3f) {
                 iterator.remove()
             }
+        }
+    }
+
+    /**
+     * Spawn dust particles for the Hammer power-up impact effect.
+     *
+     * Creates 16 earthy/brown-toned particles that burst outward
+     * from the hammer strike point, simulating debris flying off
+     * the destroyed gem. The particles are slower and heavier than
+     * match-clear particles, with a slight downward bias.
+     *
+     * @param x Center X of the hammer impact (Canvas pixels)
+     * @param y Center Y of the hammer impact (Canvas pixels)
+     */
+    fun spawnHammerDust(x: Float, y: Float) {
+        val count = minOf(16, MAX_PARTICLES - particles.size)
+        // Earthy/dust colors for the impact debris
+        val dustColors = listOf(
+            Color(0xFFBB8844),  // Sandy brown
+            Color(0xFF997744),  // Dark sand
+            Color(0xFFCCAA66),  // Light dust
+            Color(0xFFAA9955),  // Warm tan
+            Color(0xFFDDCC88)   // Bright dust
+        )
+
+        for (i in 0 until count) {
+            val angle = Random.nextFloat() * 2f * Math.PI.toFloat()
+            // Slower than match particles — heavy debris
+            val speed = 100f + Random.nextFloat() * 150f
+            val lifetime = 0.4f + Random.nextFloat() * 0.3f
+
+            particles.add(
+                Particle(
+                    x = x, y = y,
+                    velocityX = cos(angle) * speed,
+                    // Slight downward bias for gravity feel
+                    velocityY = sin(angle) * speed + 30f,
+                    color = dustColors[i % dustColors.size],
+                    alpha = 0.9f,
+                    radius = 2.5f + Random.nextFloat() * 3f,
+                    life = lifetime,
+                    maxLife = lifetime
+                )
+            )
         }
     }
 

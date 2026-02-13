@@ -9,6 +9,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.nativeCanvas
 import com.galaxymatch.game.model.Gem
@@ -16,11 +17,21 @@ import com.galaxymatch.game.model.GemType
 import com.galaxymatch.game.model.SpecialType
 import com.galaxymatch.game.ui.components.toColor
 import com.galaxymatch.game.ui.components.toDarkColor
+import com.galaxymatch.game.ui.components.toHighContrastColor
+import kotlin.math.cos
+import kotlin.math.sin
 
 /**
  * Draws individual gem shapes on a Canvas.
  *
- * Each gem is drawn as a colored circle with a gloss highlight.
+ * Each gem type has a unique space-themed shape:
+ * - Red → Crystal: Faceted diamond with crown facet highlight
+ * - Blue → Planet: Sphere with atmospheric band + thin ring
+ * - Green → Star: 5-pointed star, filled, with center highlight
+ * - Yellow → Asteroid: Irregular polygon with crater details
+ * - Orange → Nebula: Overlapping translucent circles + bright core
+ * - Purple → Moon: Sphere with crater indentations
+ *
  * Special gems get additional visual indicators:
  * - Striped (horizontal): Three horizontal lines across the gem
  * - Striped (vertical): Three vertical lines across the gem
@@ -33,6 +44,10 @@ import com.galaxymatch.game.ui.components.toDarkColor
 
 /**
  * Draw a single gem at the given center position with the given radius.
+ *
+ * Dispatches to the appropriate space-themed shape renderer based on gem type,
+ * then overlays any special indicators (stripes, wrapped ring, color bomb dots)
+ * and colorblind accessibility shapes on top.
  *
  * @param gem The gem to draw
  * @param centerX The x-coordinate of the gem's center
@@ -47,33 +62,34 @@ fun DrawScope.drawGem(
     radius: Float,
     alpha: Float = 1f,
     specialAnimProgress: Float = 0f,
-    colorblindMode: Boolean = false
+    colorblindMode: Boolean = false,
+    highContrastMode: Boolean = false
 ) {
     val center = Offset(centerX, centerY)
-    val color = gem.type.toColor()
+    // Use brighter, more saturated colors in high-contrast mode
+    val color = if (highContrastMode) gem.type.toHighContrastColor() else gem.type.toColor()
+    val darkColor = gem.type.toDarkColor()
 
-    // === Step 1: Draw the shadow (slightly offset dark circle) ===
+    // === Step 1: Draw drop shadow ===
+    // Slightly offset dark circle behind the gem for a floating 3D look
     drawCircle(
         color = Color.Black.copy(alpha = 0.3f * alpha),
         radius = radius,
         center = Offset(centerX + radius * 0.05f, centerY + radius * 0.08f)
     )
 
-    // === Step 2: Draw the main gem body ===
-    drawCircle(
-        color = color.copy(alpha = alpha),
-        radius = radius,
-        center = center
-    )
+    // === Step 2: Draw the space-themed gem shape ===
+    // Each gem type gets a unique shape instead of a plain circle
+    when (gem.type) {
+        GemType.Red -> drawCrystalGem(center, radius, color, darkColor, alpha)
+        GemType.Blue -> drawPlanetGem(center, radius, color, darkColor, alpha)
+        GemType.Green -> drawStarGem(center, radius, color, darkColor, alpha)
+        GemType.Yellow -> drawAsteroidGem(center, radius, color, darkColor, alpha)
+        GemType.Orange -> drawNebulaGem(center, radius, color, darkColor, alpha)
+        GemType.Purple -> drawMoonGem(center, radius, color, darkColor, alpha)
+    }
 
-    // === Step 3: Draw the gloss highlight (smaller, lighter circle, offset up-left) ===
-    drawCircle(
-        color = Color.White.copy(alpha = 0.35f * alpha),
-        radius = radius * 0.55f,
-        center = Offset(centerX - radius * 0.15f, centerY - radius * 0.2f)
-    )
-
-    // === Step 4: Draw special gem indicators ===
+    // === Step 3: Draw special gem indicators ===
     // specialAnimProgress drives continuous animations: stripe pulsing,
     // wrapped breathing, and color bomb rotation. Cycles 0→1 over 2 seconds.
     when (gem.special) {
@@ -84,7 +100,7 @@ fun DrawScope.drawGem(
             drawStripedVertical(center, radius, alpha, specialAnimProgress)
         }
         SpecialType.Wrapped -> {
-            drawWrappedIndicator(center, radius, gem.type.toDarkColor(), alpha, specialAnimProgress)
+            drawWrappedIndicator(center, radius, darkColor, alpha, specialAnimProgress)
         }
         SpecialType.ColorBomb -> {
             drawColorBombPattern(center, radius, alpha, specialAnimProgress)
@@ -92,10 +108,368 @@ fun DrawScope.drawGem(
         SpecialType.None -> { /* Regular gem, no extra decoration */ }
     }
 
-    // === Step 5: Draw colorblind shape overlay ===
+    // === Step 4: Draw colorblind shape overlay ===
+    // In high-contrast mode, shapes get thicker outlines (1.5x stroke) for extra visibility.
     if (colorblindMode) {
-        drawColorblindShape(gem.type, center, radius, alpha)
+        drawColorblindShape(gem.type, center, radius, alpha, highContrastMode)
     }
+}
+
+// ===========================================================================
+// Space-Themed Gem Shape Renderers
+// ===========================================================================
+
+/**
+ * Red gem: Crystal — faceted diamond shape with crown facet highlights.
+ * A 4-pointed elongated diamond with internal facet lines radiating
+ * from the center, giving it a cut-gemstone appearance.
+ */
+private fun DrawScope.drawCrystalGem(
+    center: Offset, radius: Float, color: Color, darkColor: Color, alpha: Float
+) {
+    // 4-point diamond path (taller than wide for crystal shape)
+    val path = Path().apply {
+        moveTo(center.x, center.y - radius * 0.95f)          // Top point
+        lineTo(center.x + radius * 0.7f, center.y)            // Right point
+        lineTo(center.x, center.y + radius * 0.95f)           // Bottom point
+        lineTo(center.x - radius * 0.7f, center.y)            // Left point
+        close()
+    }
+
+    // Main body fill
+    drawPath(path = path, color = color.copy(alpha = alpha))
+
+    // Upper-left facet (lighter — catches the light)
+    val upperFacet = Path().apply {
+        moveTo(center.x, center.y - radius * 0.95f)          // Top
+        lineTo(center.x, center.y)                             // Center
+        lineTo(center.x - radius * 0.7f, center.y)            // Left
+        close()
+    }
+    drawPath(path = upperFacet, color = Color.White.copy(alpha = 0.25f * alpha))
+
+    // Lower-right facet (darker — in shadow)
+    val lowerFacet = Path().apply {
+        moveTo(center.x, center.y + radius * 0.95f)           // Bottom
+        lineTo(center.x, center.y)                             // Center
+        lineTo(center.x + radius * 0.7f, center.y)            // Right
+        close()
+    }
+    drawPath(path = lowerFacet, color = darkColor.copy(alpha = 0.3f * alpha))
+
+    // Facet lines radiating from center — gives the cut-gem look
+    val facetColor = Color.White.copy(alpha = 0.3f * alpha)
+    val facetStroke = radius * 0.04f
+    // Center to top
+    drawLine(facetColor, center, Offset(center.x, center.y - radius * 0.95f), facetStroke)
+    // Center to right
+    drawLine(facetColor, center, Offset(center.x + radius * 0.7f, center.y), facetStroke)
+    // Center to bottom
+    drawLine(facetColor, center, Offset(center.x, center.y + radius * 0.95f), facetStroke)
+    // Center to left
+    drawLine(facetColor, center, Offset(center.x - radius * 0.7f, center.y), facetStroke)
+
+    // Crown highlight sparkle at upper-left facet
+    drawCircle(
+        color = Color.White.copy(alpha = 0.5f * alpha),
+        radius = radius * 0.1f,
+        center = Offset(center.x - radius * 0.25f, center.y - radius * 0.35f)
+    )
+}
+
+/**
+ * Blue gem: Planet — sphere with atmospheric gradient band and thin ring.
+ * Looks like a miniature gas giant or Earth-like planet.
+ */
+private fun DrawScope.drawPlanetGem(
+    center: Offset, radius: Float, color: Color, darkColor: Color, alpha: Float
+) {
+    // Main sphere body
+    drawCircle(color = color.copy(alpha = alpha), radius = radius * 0.85f, center = center)
+
+    // Atmospheric band (darker stripe across the middle)
+    val bandPath = Path().apply {
+        moveTo(center.x - radius * 0.82f, center.y - radius * 0.1f)
+        lineTo(center.x + radius * 0.82f, center.y - radius * 0.1f)
+        lineTo(center.x + radius * 0.78f, center.y + radius * 0.15f)
+        lineTo(center.x - radius * 0.78f, center.y + radius * 0.15f)
+        close()
+    }
+    drawPath(path = bandPath, color = darkColor.copy(alpha = 0.4f * alpha))
+
+    // Second thinner atmospheric band below
+    val band2Path = Path().apply {
+        moveTo(center.x - radius * 0.7f, center.y + radius * 0.3f)
+        lineTo(center.x + radius * 0.7f, center.y + radius * 0.3f)
+        lineTo(center.x + radius * 0.65f, center.y + radius * 0.42f)
+        lineTo(center.x - radius * 0.65f, center.y + radius * 0.42f)
+        close()
+    }
+    drawPath(path = band2Path, color = darkColor.copy(alpha = 0.25f * alpha))
+
+    // Thin orbital ring (elliptical — wider than tall)
+    drawOval(
+        color = Color.White.copy(alpha = 0.4f * alpha),
+        topLeft = Offset(center.x - radius * 1.0f, center.y - radius * 0.18f),
+        size = Size(radius * 2.0f, radius * 0.36f),
+        style = Stroke(width = radius * 0.06f)
+    )
+
+    // Upper-left atmospheric glow (spherical highlight)
+    drawCircle(
+        color = Color.White.copy(alpha = 0.3f * alpha),
+        radius = radius * 0.4f,
+        center = Offset(center.x - radius * 0.25f, center.y - radius * 0.35f)
+    )
+}
+
+/**
+ * Green gem: Star — 5-pointed filled star with a bright center highlight.
+ * A classic celestial star shape.
+ */
+private fun DrawScope.drawStarGem(
+    center: Offset, radius: Float, color: Color, darkColor: Color, alpha: Float
+) {
+    val outerR = radius * 0.95f
+    val innerR = radius * 0.4f
+    val points = 5
+
+    // Build the 5-pointed star path
+    val starPath = Path().apply {
+        for (i in 0 until points * 2) {
+            val angle = (i * Math.PI / points - Math.PI / 2).toFloat()
+            val r = if (i % 2 == 0) outerR else innerR
+            val x = center.x + r * cos(angle)
+            val y = center.y + r * sin(angle)
+            if (i == 0) moveTo(x, y) else lineTo(x, y)
+        }
+        close()
+    }
+
+    // Filled star body
+    drawPath(path = starPath, color = color.copy(alpha = alpha))
+
+    // Dark outline for definition
+    drawPath(
+        path = starPath,
+        color = darkColor.copy(alpha = 0.4f * alpha),
+        style = Stroke(width = radius * 0.05f)
+    )
+
+    // Bright center glow (makes it look like a glowing star)
+    drawCircle(
+        color = Color.White.copy(alpha = 0.5f * alpha),
+        radius = radius * 0.3f,
+        center = center
+    )
+
+    // Sparkle highlight at top-left
+    drawCircle(
+        color = Color.White.copy(alpha = 0.35f * alpha),
+        radius = radius * 0.12f,
+        center = Offset(center.x - radius * 0.2f, center.y - radius * 0.3f)
+    )
+}
+
+/**
+ * Yellow gem: Asteroid — irregular polygon with crater details.
+ * A bumpy, rocky-looking polygon with small crater indentations.
+ */
+private fun DrawScope.drawAsteroidGem(
+    center: Offset, radius: Float, color: Color, darkColor: Color, alpha: Float
+) {
+    // 8 irregular points making a bumpy asteroid silhouette
+    val r = radius * 0.9f
+    val offsets = listOf(
+        0.85f, 0.95f, 0.78f, 0.92f, 0.80f, 0.98f, 0.75f, 0.88f
+    )
+
+    val asteroidPath = Path().apply {
+        for (i in 0 until 8) {
+            val angle = (i * Math.PI / 4.0 - Math.PI / 8.0).toFloat()
+            val pointR = r * offsets[i]
+            val x = center.x + pointR * cos(angle)
+            val y = center.y + pointR * sin(angle)
+            if (i == 0) moveTo(x, y) else lineTo(x, y)
+        }
+        close()
+    }
+
+    // Main body fill
+    drawPath(path = asteroidPath, color = color.copy(alpha = alpha))
+
+    // Dark outline
+    drawPath(
+        path = asteroidPath,
+        color = darkColor.copy(alpha = 0.4f * alpha),
+        style = Stroke(width = radius * 0.05f)
+    )
+
+    // Crater 1 (large, top-right area)
+    drawCircle(
+        color = darkColor.copy(alpha = 0.35f * alpha),
+        radius = radius * 0.2f,
+        center = Offset(center.x + radius * 0.2f, center.y - radius * 0.2f)
+    )
+    // Crater rim highlight
+    drawCircle(
+        color = Color.White.copy(alpha = 0.15f * alpha),
+        radius = radius * 0.2f,
+        center = Offset(center.x + radius * 0.2f, center.y - radius * 0.2f),
+        style = Stroke(width = radius * 0.04f)
+    )
+
+    // Crater 2 (smaller, bottom-left)
+    drawCircle(
+        color = darkColor.copy(alpha = 0.3f * alpha),
+        radius = radius * 0.13f,
+        center = Offset(center.x - radius * 0.3f, center.y + radius * 0.25f)
+    )
+
+    // Crater 3 (tiny, center-bottom)
+    drawCircle(
+        color = darkColor.copy(alpha = 0.25f * alpha),
+        radius = radius * 0.08f,
+        center = Offset(center.x + radius * 0.05f, center.y + radius * 0.4f)
+    )
+
+    // Surface highlight (top-left illumination)
+    drawCircle(
+        color = Color.White.copy(alpha = 0.2f * alpha),
+        radius = radius * 0.35f,
+        center = Offset(center.x - radius * 0.15f, center.y - radius * 0.25f)
+    )
+}
+
+/**
+ * Orange gem: Nebula — overlapping translucent circles forming a cloud
+ * with a bright glowing core. Looks like a cosmic gas cloud.
+ */
+private fun DrawScope.drawNebulaGem(
+    center: Offset, radius: Float, color: Color, darkColor: Color, alpha: Float
+) {
+    // 4 overlapping translucent cloud circles at different positions
+    val cloudPositions = listOf(
+        Offset(center.x - radius * 0.2f, center.y - radius * 0.15f),
+        Offset(center.x + radius * 0.25f, center.y - radius * 0.1f),
+        Offset(center.x - radius * 0.1f, center.y + radius * 0.2f),
+        Offset(center.x + radius * 0.15f, center.y + radius * 0.25f)
+    )
+    val cloudRadii = listOf(0.55f, 0.5f, 0.48f, 0.45f)
+
+    // Draw outer translucent clouds (darker shade for depth)
+    for (i in cloudPositions.indices) {
+        drawCircle(
+            color = darkColor.copy(alpha = 0.35f * alpha),
+            radius = radius * cloudRadii[i],
+            center = cloudPositions[i]
+        )
+    }
+
+    // Draw inner brighter clouds
+    for (i in cloudPositions.indices) {
+        drawCircle(
+            color = color.copy(alpha = 0.5f * alpha),
+            radius = radius * cloudRadii[i] * 0.8f,
+            center = cloudPositions[i]
+        )
+    }
+
+    // Bright glowing core at center
+    drawCircle(
+        color = color.copy(alpha = 0.9f * alpha),
+        radius = radius * 0.35f,
+        center = center
+    )
+
+    // Hot white center (the nebula's bright heart)
+    drawCircle(
+        color = Color.White.copy(alpha = 0.5f * alpha),
+        radius = radius * 0.18f,
+        center = center
+    )
+
+    // Subtle outer haze
+    drawCircle(
+        color = color.copy(alpha = 0.15f * alpha),
+        radius = radius * 0.95f,
+        center = center
+    )
+}
+
+/**
+ * Purple gem: Moon — sphere with 3 crater indentations (dark circles
+ * with light rims). Looks like a small moon or planetoid.
+ */
+private fun DrawScope.drawMoonGem(
+    center: Offset, radius: Float, color: Color, darkColor: Color, alpha: Float
+) {
+    // Main sphere body
+    drawCircle(color = color.copy(alpha = alpha), radius = radius * 0.88f, center = center)
+
+    // Crater 1 (large, upper-right)
+    drawCircle(
+        color = darkColor.copy(alpha = 0.4f * alpha),
+        radius = radius * 0.22f,
+        center = Offset(center.x + radius * 0.25f, center.y - radius * 0.2f)
+    )
+    // Crater 1 light rim (illuminated top edge)
+    drawArc(
+        color = Color.White.copy(alpha = 0.2f * alpha),
+        startAngle = 200f,
+        sweepAngle = 140f,
+        useCenter = false,
+        topLeft = Offset(
+            center.x + radius * 0.25f - radius * 0.22f,
+            center.y - radius * 0.2f - radius * 0.22f
+        ),
+        size = Size(radius * 0.44f, radius * 0.44f),
+        style = Stroke(width = radius * 0.04f)
+    )
+
+    // Crater 2 (medium, lower-left)
+    drawCircle(
+        color = darkColor.copy(alpha = 0.35f * alpha),
+        radius = radius * 0.16f,
+        center = Offset(center.x - radius * 0.3f, center.y + radius * 0.2f)
+    )
+    // Crater 2 light rim
+    drawArc(
+        color = Color.White.copy(alpha = 0.18f * alpha),
+        startAngle = 200f,
+        sweepAngle = 140f,
+        useCenter = false,
+        topLeft = Offset(
+            center.x - radius * 0.3f - radius * 0.16f,
+            center.y + radius * 0.2f - radius * 0.16f
+        ),
+        size = Size(radius * 0.32f, radius * 0.32f),
+        style = Stroke(width = radius * 0.04f)
+    )
+
+    // Crater 3 (small, center-bottom)
+    drawCircle(
+        color = darkColor.copy(alpha = 0.3f * alpha),
+        radius = radius * 0.1f,
+        center = Offset(center.x + radius * 0.05f, center.y + radius * 0.45f)
+    )
+
+    // Overall spherical highlight (upper-left, moon surface catching light)
+    drawCircle(
+        color = Color.White.copy(alpha = 0.25f * alpha),
+        radius = radius * 0.45f,
+        center = Offset(center.x - radius * 0.2f, center.y - radius * 0.25f)
+    )
+
+    // Terminator shadow (dark edge on lower-right for 3D depth)
+    drawArc(
+        color = Color.Black.copy(alpha = 0.15f * alpha),
+        startAngle = 20f,
+        sweepAngle = 160f,
+        useCenter = true,
+        topLeft = Offset(center.x - radius * 0.88f, center.y - radius * 0.88f),
+        size = Size(radius * 1.76f, radius * 1.76f)
+    )
 }
 
 /**
@@ -107,7 +481,7 @@ private fun DrawScope.drawStripedHorizontal(
     center: Offset, radius: Float, alpha: Float, animProgress: Float
 ) {
     // Pulse alpha using a sine wave: 0.5 (dim) → 0.9 (bright) → 0.5 → ...
-    val pulseAlpha = 0.5f + 0.4f * kotlin.math.sin(animProgress * 2f * Math.PI.toFloat())
+    val pulseAlpha = 0.5f + 0.4f * sin(animProgress * 2f * Math.PI.toFloat())
     val stripeColor = Color.White.copy(alpha = pulseAlpha * alpha)
     val strokeWidth = radius * 0.12f
     val offsets = listOf(-0.3f, 0f, 0.3f)
@@ -131,7 +505,7 @@ private fun DrawScope.drawStripedHorizontal(
 private fun DrawScope.drawStripedVertical(
     center: Offset, radius: Float, alpha: Float, animProgress: Float
 ) {
-    val pulseAlpha = 0.5f + 0.4f * kotlin.math.sin(animProgress * 2f * Math.PI.toFloat())
+    val pulseAlpha = 0.5f + 0.4f * sin(animProgress * 2f * Math.PI.toFloat())
     val stripeColor = Color.White.copy(alpha = pulseAlpha * alpha)
     val strokeWidth = radius * 0.12f
     val offsets = listOf(-0.3f, 0f, 0.3f)
@@ -161,7 +535,7 @@ private fun DrawScope.drawWrappedIndicator(
     animProgress: Float
 ) {
     // Breathing sine wave for the glow ring
-    val breathe = kotlin.math.sin(animProgress * 2f * Math.PI.toFloat())
+    val breathe = sin(animProgress * 2f * Math.PI.toFloat())
     val glowRadius = radius * (0.75f + 0.07f * breathe)  // Pulses between 0.68 and 0.82
     val glowAlpha = 0.4f + 0.2f * breathe                // Pulses between 0.2 and 0.6
 
@@ -221,8 +595,8 @@ private fun DrawScope.drawColorBombPattern(
     for (i in dotColors.indices) {
         // Add the rotation offset to each dot's base angle
         val angle = (i * 60.0 - 90.0 + rotationDegrees) * (Math.PI / 180.0)
-        val dotX = center.x + (dotDistance * kotlin.math.cos(angle)).toFloat()
-        val dotY = center.y + (dotDistance * kotlin.math.sin(angle)).toFloat()
+        val dotX = center.x + (dotDistance * cos(angle)).toFloat()
+        val dotY = center.y + (dotDistance * sin(angle)).toFloat()
 
         drawCircle(
             color = dotColors[i].copy(alpha = alpha),
@@ -232,7 +606,7 @@ private fun DrawScope.drawColorBombPattern(
     }
 
     // Center sparkle: pulses at 2x frequency for a lively twinkling effect
-    val sparklePulse = kotlin.math.sin(animProgress * 4f * Math.PI.toFloat())
+    val sparklePulse = sin(animProgress * 4f * Math.PI.toFloat())
     val sparkleRadius = radius * (0.12f + 0.06f * sparklePulse)
     val sparkleAlpha = 0.6f + 0.4f * sparklePulse
 
@@ -257,10 +631,12 @@ private fun DrawScope.drawColorblindShape(
     gemType: GemType,
     center: Offset,
     radius: Float,
-    alpha: Float
+    alpha: Float,
+    highContrast: Boolean = false
 ) {
     val shapeColor = Color.White.copy(alpha = 0.85f * alpha)
-    val strokeWidth = radius * 0.1f
+    // Thicker outlines in high-contrast mode for extra visibility
+    val strokeWidth = radius * if (highContrast) 0.15f else 0.1f
     val size = radius * 0.45f
 
     when (gemType) {
@@ -307,7 +683,7 @@ private fun DrawScope.drawDiamondShape(
     drawPath(
         path = path,
         color = color,
-        style = androidx.compose.ui.graphics.drawscope.Stroke(width = strokeWidth)
+        style = Stroke(width = strokeWidth)
     )
 }
 
@@ -324,7 +700,7 @@ private fun DrawScope.drawTriangleShape(
     drawPath(
         path = path,
         color = color,
-        style = androidx.compose.ui.graphics.drawscope.Stroke(width = strokeWidth)
+        style = Stroke(width = strokeWidth)
     )
 }
 
@@ -340,8 +716,8 @@ private fun DrawScope.drawStarShape(
         for (i in 0 until points * 2) {
             val angle = (i * Math.PI / points - Math.PI / 2).toFloat()
             val r = if (i % 2 == 0) outerRadius else innerRadius
-            val x = center.x + r * kotlin.math.cos(angle)
-            val y = center.y + r * kotlin.math.sin(angle)
+            val x = center.x + r * cos(angle)
+            val y = center.y + r * sin(angle)
             if (i == 0) moveTo(x, y) else lineTo(x, y)
         }
         close()
@@ -349,7 +725,7 @@ private fun DrawScope.drawStarShape(
     drawPath(
         path = path,
         color = color,
-        style = androidx.compose.ui.graphics.drawscope.Stroke(width = strokeWidth)
+        style = Stroke(width = strokeWidth)
     )
 }
 
@@ -361,7 +737,7 @@ private fun DrawScope.drawSquareShape(
         color = color,
         topLeft = Offset(center.x - size, center.y - size),
         size = Size(size * 2, size * 2),
-        style = androidx.compose.ui.graphics.drawscope.Stroke(width = strokeWidth)
+        style = Stroke(width = strokeWidth)
     )
 }
 
@@ -372,8 +748,8 @@ private fun DrawScope.drawHexagonShape(
     val path = Path().apply {
         for (i in 0 until 6) {
             val angle = (i * Math.PI / 3 - Math.PI / 2).toFloat()
-            val x = center.x + size * kotlin.math.cos(angle)
-            val y = center.y + size * kotlin.math.sin(angle)
+            val x = center.x + size * cos(angle)
+            val y = center.y + size * sin(angle)
             if (i == 0) moveTo(x, y) else lineTo(x, y)
         }
         close()
@@ -381,7 +757,7 @@ private fun DrawScope.drawHexagonShape(
     drawPath(
         path = path,
         color = color,
-        style = androidx.compose.ui.graphics.drawscope.Stroke(width = strokeWidth)
+        style = Stroke(width = strokeWidth)
     )
 }
 
@@ -410,7 +786,7 @@ fun DrawScope.drawIce(
         color = Color(0xFF00CCEE).copy(alpha = 0.6f * alpha),
         radius = radius * 1.05f,
         center = center,
-        style = androidx.compose.ui.graphics.drawscope.Stroke(width = radius * 0.1f)
+        style = Stroke(width = radius * 0.1f)
     )
 
     // === Translucent blue-white fill — the "frozen" look ===
@@ -461,7 +837,7 @@ fun DrawScope.drawReinforcedIce(
         color = Color(0xFF0099CC).copy(alpha = 0.7f * alpha),
         radius = radius * 1.1f,
         center = center,
-        style = androidx.compose.ui.graphics.drawscope.Stroke(width = radius * 0.14f)
+        style = Stroke(width = radius * 0.14f)
     )
 
     // Second inner ring for layered look
@@ -469,7 +845,7 @@ fun DrawScope.drawReinforcedIce(
         color = Color(0xFF00BBEE).copy(alpha = 0.4f * alpha),
         radius = radius * 1.0f,
         center = center,
-        style = androidx.compose.ui.graphics.drawscope.Stroke(width = radius * 0.06f)
+        style = Stroke(width = radius * 0.06f)
     )
 
     // Deeper blue tint fill
@@ -565,14 +941,14 @@ fun DrawScope.drawLocked(
         color = Color(0xFF888888).copy(alpha = 0.9f * alpha),
         radius = radius * 0.2f,
         center = center,
-        style = androidx.compose.ui.graphics.drawscope.Stroke(width = radius * 0.06f)
+        style = Stroke(width = radius * 0.06f)
     )
     // Padlock shackle (small arc above the circle)
     drawCircle(
         color = Color(0xFF888888).copy(alpha = 0.9f * alpha),
         radius = radius * 0.12f,
         center = Offset(center.x, center.y - radius * 0.18f),
-        style = androidx.compose.ui.graphics.drawscope.Stroke(width = radius * 0.05f)
+        style = Stroke(width = radius * 0.05f)
     )
 }
 
@@ -608,7 +984,7 @@ fun DrawScope.drawBomb(
         color = urgencyColor.copy(alpha = 0.9f * alpha),
         radius = radius * 0.38f,
         center = Offset(center.x, center.y + radius * 0.15f),
-        style = androidx.compose.ui.graphics.drawscope.Stroke(width = radius * 0.08f)
+        style = Stroke(width = radius * 0.08f)
     )
 
     // Fuse spark (small dot above)

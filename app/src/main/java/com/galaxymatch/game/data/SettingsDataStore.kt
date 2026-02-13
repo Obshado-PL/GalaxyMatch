@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.galaxymatch.game.model.SettingsState
 import kotlinx.coroutines.flow.Flow
@@ -39,6 +40,10 @@ class SettingsDataStore(private val context: Context) {
         private val TUTORIAL_SEEN_KEY = booleanPreferencesKey("tutorial_seen")
         private val HAPTIC_MUTED_KEY = booleanPreferencesKey("haptic_muted")
         private val COLORBLIND_MODE_KEY = booleanPreferencesKey("colorblind_mode")
+        /** Font size preference: 0=Small, 1=Normal, 2=Large */
+        private val FONT_SIZE_LEVEL_KEY = intPreferencesKey("font_size_level")
+        /** Whether high-contrast gem colors are enabled */
+        private val HIGH_CONTRAST_KEY = booleanPreferencesKey("high_contrast_mode")
     }
 
     /**
@@ -54,7 +59,9 @@ class SettingsDataStore(private val context: Context) {
                 musicMuted = prefs[MUSIC_MUTED_KEY] ?: false,
                 tutorialSeen = prefs[TUTORIAL_SEEN_KEY] ?: false,
                 hapticMuted = prefs[HAPTIC_MUTED_KEY] ?: false,
-                colorblindMode = prefs[COLORBLIND_MODE_KEY] ?: false
+                colorblindMode = prefs[COLORBLIND_MODE_KEY] ?: false,
+                fontSizeLevel = prefs[FONT_SIZE_LEVEL_KEY] ?: 1,
+                highContrastMode = prefs[HIGH_CONTRAST_KEY] ?: false
             )
         }
     }
@@ -91,6 +98,20 @@ class SettingsDataStore(private val context: Context) {
     suspend fun saveColorblindMode(enabled: Boolean) {
         context.settingsDataStore.edit { prefs ->
             prefs[COLORBLIND_MODE_KEY] = enabled
+        }
+    }
+
+    /** Save font size level (0=Small, 1=Normal, 2=Large). */
+    suspend fun saveFontSizeLevel(level: Int) {
+        context.settingsDataStore.edit { prefs ->
+            prefs[FONT_SIZE_LEVEL_KEY] = level.coerceIn(0, 2)
+        }
+    }
+
+    /** Save whether high-contrast mode is enabled. */
+    suspend fun saveHighContrastMode(enabled: Boolean) {
+        context.settingsDataStore.edit { prefs ->
+            prefs[HIGH_CONTRAST_KEY] = enabled
         }
     }
 

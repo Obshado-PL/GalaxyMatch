@@ -4,6 +4,7 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
@@ -98,6 +99,26 @@ fun SettingsScreen(onBackToMap: () -> Unit) {
             label = "Colorblind Mode",
             isEnabled = state.colorblindMode,
             onToggle = { viewModel.toggleColorblindMode() }
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // === High Contrast Mode Toggle ===
+        // Brighter gem colors for better visibility on low-brightness screens
+        SettingsToggleRow(
+            label = "High Contrast",
+            isEnabled = state.highContrastMode,
+            onToggle = { viewModel.toggleHighContrast() }
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // === Font Size Selector ===
+        // Displays 3 chips (S / N / L) — the active one is highlighted.
+        // Tapping the row cycles through: Small → Normal → Large → Small.
+        FontSizeSelector(
+            currentLevel = state.fontSizeLevel,
+            onCycle = { viewModel.cycleFontSize() }
         )
 
         Spacer(modifier = Modifier.height(48.dp))
@@ -259,5 +280,72 @@ private fun SettingsToggleRow(
                 uncheckedTrackColor = Color.White.copy(alpha = 0.2f)
             )
         )
+    }
+}
+
+/**
+ * Font size selector row with three chips: S (Small), N (Normal), L (Large).
+ *
+ * The currently active chip is highlighted in green; the others are dimmed.
+ * Tapping the row cycles to the next size level.
+ *
+ * @param currentLevel 0=Small, 1=Normal, 2=Large
+ * @param onCycle Called to advance to the next size level
+ */
+@Composable
+private fun FontSizeSelector(
+    currentLevel: Int,
+    onCycle: () -> Unit
+) {
+    // Labels for each font size level
+    val sizeLabels = listOf("S", "N", "L")
+    val sizeNames = listOf("Small", "Normal", "Large")
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                color = Color.White.copy(alpha = 0.08f),
+                shape = RoundedCornerShape(12.dp)
+            )
+            .clickable { onCycle() }
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Label on the left
+        Text(
+            text = "Font Size",
+            style = MaterialTheme.typography.bodyLarge.copy(
+                fontWeight = FontWeight.Medium
+            ),
+            color = Color.White
+        )
+
+        // Chip row on the right — 3 small rounded chips (S / N / L)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            sizeLabels.forEachIndexed { index, label ->
+                val isActive = index == currentLevel
+                // Active chip: green background + white text
+                // Inactive chip: dim background + dim text
+                val chipBackground = if (isActive) Color(0xFF44BB44) else Color.White.copy(alpha = 0.15f)
+                val chipTextColor = if (isActive) Color.White else Color.White.copy(alpha = 0.5f)
+
+                Box(
+                    modifier = Modifier
+                        .background(chipBackground, RoundedCornerShape(8.dp))
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal
+                        ),
+                        color = chipTextColor
+                    )
+                }
+            }
+        }
     }
 }

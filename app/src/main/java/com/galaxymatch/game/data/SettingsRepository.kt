@@ -31,6 +31,12 @@ class SettingsRepository(private val dataStore: SettingsDataStore) {
     /** Save whether colorblind mode is enabled. */
     suspend fun saveColorblindMode(enabled: Boolean) = dataStore.saveColorblindMode(enabled)
 
+    /** Save font size level (0=Small, 1=Normal, 2=Large). */
+    suspend fun saveFontSizeLevel(level: Int) = dataStore.saveFontSizeLevel(level)
+
+    /** Save whether high-contrast mode is enabled. */
+    suspend fun saveHighContrastMode(enabled: Boolean) = dataStore.saveHighContrastMode(enabled)
+
     /** Clear all settings (reset to defaults). */
     suspend fun clearAll() = dataStore.clearAll()
 }
