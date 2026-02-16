@@ -24,7 +24,32 @@
       "Bash(bash gradlew:*)",
       "Bash(GRADLE_OPTS=\"\" ./gradlew:*)",
       "WebFetch(domain:jorgecastillo.dev)",
-      "Bash(.gradlew:*)"
+      "Bash(.gradlew:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nAdd objectives, settings, particles, power-ups, and UI overhaul\n\nExpand the game with new systems: level objectives and tracking,\nobstacle types, particle effects, power-ups, undo support, and a\nsettings screen with persistence. Overhaul the game UI with enhanced\ncanvas rendering, pre-level dialog, tutorial overlay, and bounce\neffects. Update engine logic for gravity, shuffle detection, and\nscoring. Enrich level data with 20 levels and improve navigation.\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(cd:*)",
+      "Bash(BASE=\"app/src/main/java/com/candycrush/game\")",
+      "Bash(NEW=\"app/src/main/java/com/galaxymatch/game\")",
+      "Bash(git mv:*)",
+      "Bash(find:*)",
+      "Bash(BASE=\"app/src/main/java/com/galaxymatch/game\")",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nRebrand to Galaxy Match with space theme and animated background\n\nRename the entire project from \"Candy Crush\" to \"Galaxy Match\" with a\nspace/galaxy theme. Move package from com.candycrush.game to\ncom.galaxymatch.game, rename all classes \\(Candy→Gem, CandyType→GemType,\netc.\\), update all variables, comments, and string resources.\n\nAdd animated galaxy background with twinkling stars \\(80 pulsing dots\\),\nfalling comets \\(diagonal streaks with fading tails\\), and drifting nebula\nclouds. Integrated into all 5 screens. Redesign launcher icon with a\npurple gem diamond and \"G\" letter. Darken color palette for deeper\nspace feel.\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nFix choppy animations by switching to time-based 60fps updates\n\nReplace the discrete-step delay\\(\\) animation in animateProgress\\(\\) with\ntime-based animation using System.nanoTime\\(\\) and 16ms frame intervals.\nThe old approach used fixed steps \\(e.g. 24 steps over 800ms = ~30fps\\)\nwhich caused visible choppiness, especially during the board entry\ndrop-in animation. Now all 13+ animations run at smooth ~60fps.\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(gh auth:*)",
+      "Bash(gh:*)",
+      "Bash(\"C:\\\\Program Files\\\\GitHub CLI\\\\gh.exe\" --version)",
+      "Bash(\"C:\\\\Program Files\\\\GitHub CLI\\\\gh.exe\" auth status)",
+      "Bash(\"C:\\\\Program Files\\\\GitHub CLI\\\\gh.exe\" auth login --web --git-protocol https)",
+      "Bash(\"C:\\\\Program Files\\\\GitHub CLI\\\\gh.exe\" repo create GalaxyMatch --public --description \"Android Match-3 puzzle game with space theme, built with Kotlin + Jetpack Compose\" --source \"C:\\\\Users\\\\ssche\\\\OneDrive\\\\Máy tính\\\\Claude Code\\\\First project\" --remote origin --push)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nAdd GitHub Actions workflow to auto-build debug APK\n\nBuilds a debug APK on every push to master and uploads it\nas a downloadable artifact from the Actions tab.\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git push:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nFix 14 bugs found in full codebase audit \\(75 files reviewed\\)\n\nCritical fixes:\n- GameViewModel: bonus move loop now properly handles daily/timed modes\n  \\(saves completion, best scores, checks achievements, cancels timer\\)\n- GameViewModel: power-up completion path guards against negative level\n  numbers and handles daily/timed mode completion\n- ShuffleChecker: hasValidMoves/findValidMove now skip locked gems,\n  preventing soft deadlocks and incorrect hints\n- ProgressDataStore: removed MAX_LEVELS=50 cap that silently dropped\n  data for procedurally generated levels beyond 50\n- GameEngine: matches are now scored before bomb game-over\n\nLow-severity fixes:\n- AchievementRepository: consistent \"levels completed\" definition using\n  levelStars.size instead of highestUnlockedLevel-1\n- AchievementRepository: Long-to-Int truncation safety for total score\n- AppNavigation: onNextLevel guarded against negative sentinel levels\n- DailyChallengeDataStore: date evaluated inside Flow lambda to fix\n  midnight stale-date bug\n- SplashScreen: haptic settings now loaded on app startup\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git commit:*)",
+      "Bash(keytool:*)",
+      "Bash(\"C:/Program Files/Java/jdk-21/bin/keytool\":*)",
+      "Bash(\"C:\\\\Program Files\\\\GitHub CLI\\\\gh.exe\" api repos/Obshado-PL/GalaxyMatch/pages -X POST -f source='{\"\"branch\"\":\"\"master\"\",\"\"path\"\":\"\"/docs\"\"}' --silent)",
+      "Bash(\"C:\\\\Program Files\\\\GitHub CLI\\\\gh.exe\" api repos/Obshado-PL/GalaxyMatch/pages -X PUT -f source='{\"\"branch\"\":\"\"master\"\",\"\"path\"\":\"\"/docs\"\"}' --silent)",
+      "Bash(\"C:\\\\Program Files\\\\GitHub CLI\\\\gh.exe\" api repos/Obshado-PL/GalaxyMatch/pages -X POST -f \"build_type=legacy\" --input - 2)",
+      "Bash(1 <<'EOF'\n{\"source\":{\"branch\":\"master\",\"path\":\"/docs\"}}\nEOF)"
     ]
   }
 }
